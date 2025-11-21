@@ -91,7 +91,7 @@ class EpubMergeWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("EPUB 合并工具（Qt 版）")
+        self.setWindowTitle("EPUB 合并工具")
         self.resize(800, 500)
 
         # 中心 widget + 总布局
