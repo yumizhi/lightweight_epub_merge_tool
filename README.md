@@ -7,9 +7,9 @@
 [![GitHub forks](https://img.shields.io/github/forks/yumizhi/EPUB_Merge?style=social)](https://github.com/yumizhi/EPUB_Merge/network/members)
 
 
-> 最近在用Apple books看轻小说，但是找到的epub都是分卷的形式，手机阅读起来有点繁琐，所以写了一个小工具把它们合并成一卷。
+> 最近在用Apple books看轻小说，但是找到的epub都是分卷的形式，手机阅读起来有点繁琐。不想折腾Calibre，github上另一个工具使用上有点不合我的心意，所以自己写了一个小工具进行小说分卷合并。
 
-一个针对轻小说多卷 EPUB 的合并工具，尽量保留插图、章节结构，并重建按卷分组的目录。
+一个针对轻小说多卷 EPUB 的轻量级合并工具，尽量保留插图、章节结构，并重建按卷分组的目录。
 
 ## ✨ 特性（Features）
 
