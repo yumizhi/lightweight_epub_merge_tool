@@ -18,7 +18,7 @@ import re
 
 
 # 假定 merge_epubs.py 和本文件在同一目录
-from merge_epubs import merge_epubs
+from merge_epubs_v1 import merge_epubs
 
 
 class EpubMergeApp(tk.Tk):
