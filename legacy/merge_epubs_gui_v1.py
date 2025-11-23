@@ -38,7 +38,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtCore import Qt
 
 
-from merge_epubs import merge_epubs  # 假定 merge_epubs.py 在同目录，且提供 merge_epubs 函数
+from merge_epubs_v1 import merge_epubs  # 假定 merge_epubs.py 在同目录，且提供 merge_epubs 函数
 
 
 class FileListWidget(QListWidget):
