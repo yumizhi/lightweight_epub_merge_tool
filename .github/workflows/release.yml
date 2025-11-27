@@ -1,0 +1,58 @@
+name: build-and-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install pyinstaller PySide6
+
+      - name: Build GUI (PySide6)
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name LightweightEPUBMergeGUI merge_epubs_gui.py
+
+      - name: Build CLI
+        run: |
+          pyinstaller --noconfirm --clean --onefile --name lightweight-epub-merge merge_epubs.py
+
+      # 打包：Linux/macOS
+      - name: Package (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p release
+          tar -czf release/LightweightEPUBMerge-${{ runner.os }}.tar.gz -C dist .
+
+      # 打包：Windows
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir release
+          powershell Compress-Archive -Path dist\* -DestinationPath release\LightweightEPUBMerge-Windows.zip
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
