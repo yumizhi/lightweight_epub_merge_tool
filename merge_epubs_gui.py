@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QCheckBox, QDialog, QDialogButtonBox, QSplitter
 )
 from PySide6.QtCore import Qt, QThread, Signal, QSettings, QUrl, QSize
-from PySide6.QtGui import QKeySequence, QShortcut, QFont, QDesktopServices, QIcon, QColor, QPalette
+from PySide6.QtGui import QKeySequence, QShortcut, QFont, QDesktopServices, QIcon, QColor, QPalette, QFontDatabase
 
 # 尝试导入后端
 try:
@@ -682,18 +682,12 @@ class App(QMainWindow):
             self.detail_hint.setStyleSheet("color: #666; font-size: 12px;")
 
 if __name__ == "__main__":
-    # 高分屏支持
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
     app = QApplication(sys.argv)
     
     # 设置全局字体
-    font = QFont("Segoe UI", 10)
-    if platform.system() == "Darwin":
-        font = QFont("SF Pro Text", 13)
+    font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
+    font.setPointSize(13 if platform.system() == "Darwin" else 10)
     app.setFont(font)
     
     w = App()
