@@ -97,10 +97,10 @@ python3 merge_epubs.py OUTPUT.epub VOL1.epub VOL2.epub VOL3.epub ...
 示例：
 
 ```bash
-python3 merge_epubs.py ImoutoLife全集.epub "ImoutoLife 01.epub" "ImoutoLife 02.epub" "ImoutoLife 03.epub"
+python3 merge_epubs.py OUTPUT.epub "VOL1.epub" "VOL2.epub" "VOL3.epub"
 ```
 
-建议提前按卷号重命名文件，或使用 GUI 中的“自然排序”功能。
+命令行方式无法再次排序，必须按期待顺序构建命令。需要自动排序请使用 GUI。
 
 ---
 
