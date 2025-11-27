@@ -94,13 +94,7 @@ python3 merge_epubs.py OUTPUT.epub VOL1.epub VOL2.epub VOL3.epub ...
 - `-C/--replace-cover FILE`：无论是否已有封面都强制替换为指定图片。
 - `-S/--extract-cover PATH`：从第一本输入 EPUB 中提取封面到指定路径（自动补齐扩展名）。
 
-示例：
-
-```bash
-python3 merge_epubs.py OUTPUT.epub "VOL1.epub" "VOL2.epub" "VOL3.epub"
-```
-
-命令行方式无法再次排序，必须按期待顺序构建命令。需要自动排序请使用 GUI。
+**注意**：命令行方式无法再次排序，必须按期待顺序构建命令。需要自动排序请使用 GUI。
 
 ---
 
