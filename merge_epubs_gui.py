@@ -4,23 +4,26 @@
 import sys
 import re
 import platform
+from typing import Optional, Dict
 from pathlib import Path
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QLineEdit, QFileDialog, QMessageBox, 
-    QAbstractItemView, QProgressBar, QFrame, QFormLayout, 
-    QTreeWidget, QTreeWidgetItem, QStyle, QHeaderView, QSizePolicy
+    QPushButton, QLabel, QLineEdit, QFileDialog, QMessageBox,
+    QAbstractItemView, QProgressBar, QFrame, QFormLayout,
+    QTreeWidget, QTreeWidgetItem, QStyle, QHeaderView, QSizePolicy,
+    QTextEdit, QCheckBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QSettings, QUrl, QSize
 from PySide6.QtGui import QKeySequence, QShortcut, QFont, QDesktopServices, QIcon, QColor, QPalette
 
 # 尝试导入后端
 try:
-    from merge_epubs import merge_epubs, extract_toc_as_flat_list
+    from merge_epubs import merge_epubs, extract_toc_as_flat_list, extract_cover_image
 except ImportError:
     def merge_epubs(*a): pass
     def extract_toc_as_flat_list(p): return []
+    def extract_cover_image(p, d): return None
 
 # ==========================================
 # 现代化样式表 (QSS)
@@ -198,13 +201,38 @@ class StrictTreeWidget(QTreeWidget):
 
 class Worker(QThread):
     fin = Signal(bool, str, str)
-    def __init__(self, out, data, t, a):
+
+    def __init__(
+        self,
+        out: str,
+        data,
+        title: Optional[str],
+        metadata: Dict[str, Optional[str]],
+        volume_label_template: Optional[str],
+        cover_path: Optional[Path],
+        replace_cover: bool,
+    ):
         super().__init__()
-        self.args = (out, data, t, a)
+        self.out = out
+        self.data = data
+        self.title = title
+        self.metadata = metadata
+        self.volume_label_template = volume_label_template
+        self.cover_path = cover_path
+        self.replace_cover = replace_cover
+
     def run(self):
         try:
-            merge_epubs(*self.args)
-            self.fin.emit(True, "Success", self.args[0])
+            merge_epubs(
+                self.out,
+                self.data,
+                title=self.title,
+                metadata=self.metadata,
+                volume_label_template=self.volume_label_template,
+                cover=self.cover_path,
+                replace_cover=self.replace_cover,
+            )
+            self.fin.emit(True, "Success", self.out)
         except Exception as e:
             self.fin.emit(False, str(e), "")
 
@@ -303,20 +331,51 @@ class App(QMainWindow):
         form_grid = QHBoxLayout()
         form_grid.setSpacing(20)
 
-        # 左侧：书名和作者
+        # 左侧：元数据字段
         meta_layout = QVBoxLayout()
         meta_layout.setSpacing(10)
-        
+
         self.in_title = QLineEdit()
         self.in_title.setPlaceholderText("总标题 (例如: 某某合集)")
         meta_layout.addWidget(QLabel("书籍标题:"))
         meta_layout.addWidget(self.in_title)
-        
+
         self.in_author = QLineEdit()
         self.in_author.setPlaceholderText("作者名 (可选)")
         meta_layout.addWidget(QLabel("作者:"))
         meta_layout.addWidget(self.in_author)
-        
+
+        self.in_language = QLineEdit()
+        self.in_language.setPlaceholderText("语言代码 (如 zh / en / ja / ko)")
+        meta_layout.addWidget(QLabel("语言:"))
+        meta_layout.addWidget(self.in_language)
+
+        self.in_publisher = QLineEdit()
+        self.in_publisher.setPlaceholderText("出版社")
+        meta_layout.addWidget(QLabel("出版社:"))
+        meta_layout.addWidget(self.in_publisher)
+
+        self.in_published = QLineEdit()
+        self.in_published.setPlaceholderText("出版日期 (YYYY-MM-DD)")
+        meta_layout.addWidget(QLabel("出版日期:"))
+        meta_layout.addWidget(self.in_published)
+
+        self.in_isbn = QLineEdit()
+        self.in_isbn.setPlaceholderText("ISBN")
+        meta_layout.addWidget(QLabel("ISBN:"))
+        meta_layout.addWidget(self.in_isbn)
+
+        self.in_subject = QLineEdit()
+        self.in_subject.setPlaceholderText("主题标签，多个用 // 分隔")
+        meta_layout.addWidget(QLabel("主题/标签:"))
+        meta_layout.addWidget(self.in_subject)
+
+        self.in_description = QTextEdit()
+        self.in_description.setPlaceholderText("简介 / 书籍描述")
+        self.in_description.setFixedHeight(80)
+        meta_layout.addWidget(QLabel("简介:"))
+        meta_layout.addWidget(self.in_description)
+
         # 右侧：输出路径
         out_layout = QVBoxLayout()
         out_layout.setSpacing(10)
@@ -332,9 +391,46 @@ class App(QMainWindow):
         path_row = QHBoxLayout()
         path_row.addWidget(self.in_out)
         path_row.addWidget(btn_browse)
-        
+
         out_layout.addWidget(QLabel("输出文件:"))
         out_layout.addLayout(path_row)
+        
+        self.in_volume_label = QLineEdit()
+        self.in_volume_label.setPlaceholderText("卷标题模板 (如 'Vol.{n} {name}' / '제 {n}권')")
+        out_layout.addWidget(QLabel("卷标题模板:"))
+        out_layout.addWidget(self.in_volume_label)
+
+        cover_row = QHBoxLayout()
+        self.in_cover = QLineEdit()
+        self.in_cover.setPlaceholderText("封面图片路径 (可选)")
+        btn_cover = QPushButton("选择封面")
+        btn_cover.setFixedWidth(90)
+        btn_cover.clicked.connect(self.on_choose_cover)
+        cover_row.addWidget(self.in_cover)
+        cover_row.addWidget(btn_cover)
+
+        self.chk_replace_cover = QCheckBox("强制替换已有封面")
+        self.chk_replace_cover.setToolTip("勾选后无论是否已有封面都会替换")
+
+        out_layout.addWidget(QLabel("封面图片:"))
+        out_layout.addLayout(cover_row)
+        out_layout.addWidget(self.chk_replace_cover)
+
+        extract_row = QHBoxLayout()
+        self.in_extract_dest = QLineEdit()
+        self.in_extract_dest.setPlaceholderText("提取封面输出路径")
+        btn_extract_browse = QPushButton("选择…")
+        btn_extract_browse.setFixedWidth(70)
+        btn_extract_browse.clicked.connect(self.on_choose_extract_path)
+        btn_extract = QPushButton("提取首卷封面")
+        btn_extract.setFixedWidth(120)
+        btn_extract.clicked.connect(self.on_extract_cover)
+        extract_row.addWidget(self.in_extract_dest)
+        extract_row.addWidget(btn_extract_browse)
+        extract_row.addWidget(btn_extract)
+
+        out_layout.addWidget(QLabel("从第一卷提取封面:"))
+        out_layout.addLayout(extract_row)
         # 加一个空的 stretch 保持对齐
         out_layout.addStretch()
 
@@ -411,20 +507,46 @@ class App(QMainWindow):
     def on_run(self):
         if self.tree.topLevelItemCount() == 0: return
         if not self.in_out.text(): return QMessageBox.warning(self, "提示", "请选择输出路径")
-        
+
+        cover_path = None
+        if self.in_cover.text().strip():
+            cover_path = Path(self.in_cover.text().strip()).expanduser()
+            if not cover_path.exists():
+                return QMessageBox.warning(self, "提示", "封面路径不存在")
+
         data = []
         root = self.tree.invisibleRootItem()
         for i in range(root.childCount()):
             vol_item = root.child(i)
             chap_names = [vol_item.child(k).text(0) for k in range(vol_item.childCount())]
             data.append((vol_item.text(1), vol_item.text(0), chap_names))
-            
+
+        metadata = {
+            "author": self.in_author.text().strip() or None,
+            "language": self.in_language.text().strip() or None,
+            "publisher": self.in_publisher.text().strip() or None,
+            "published": self.in_published.text().strip() or None,
+            "isbn": self.in_isbn.text().strip() or None,
+            "subject": self.in_subject.text().strip() or None,
+            "description": self.in_description.toPlainText().strip() or None,
+        }
+
+        vol_template = self.in_volume_label.text().strip() or None
+
         self.setEnabled(False)
         self.progress.show()
         self.progress.setRange(0, 0) # 忙碌动画
         self.btn_run.setText("正在合并...")
-        
-        self.wk = Worker(self.in_out.text(), data, self.in_title.text(), self.in_author.text())
+
+        self.wk = Worker(
+            self.in_out.text(),
+            data,
+            self.in_title.text().strip() or None,
+            metadata,
+            vol_template,
+            cover_path,
+            self.chk_replace_cover.isChecked(),
+        )
         self.wk.fin.connect(self.on_fin)
         self.wk.start()
 
@@ -462,10 +584,40 @@ class App(QMainWindow):
             if i.parent() is None: (i.parent() or self.tree.invisibleRootItem()).removeChild(i)
             
     def on_clear(self): self.tree.clear()
-    
+
     def on_browse(self):
         f, _ = QFileDialog.getSaveFileName(self, "保存文件", self.in_out.text(), "EPUB Files (*.epub)")
         if f: self.in_out.setText(f)
+
+    def on_choose_cover(self):
+        f, _ = QFileDialog.getOpenFileName(self, "选择封面图片", str(Path(self.in_cover.text()).expanduser()), "Images (*.png *.jpg *.jpeg *.webp *.gif)")
+        if f:
+            self.in_cover.setText(f)
+
+    def on_choose_extract_path(self):
+        f, _ = QFileDialog.getSaveFileName(self, "保存提取封面", self.in_extract_dest.text(), "Images (*.png *.jpg *.jpeg *.webp *.gif)")
+        if f:
+            self.in_extract_dest.setText(f)
+
+    def on_extract_cover(self):
+        if self.tree.topLevelItemCount() == 0:
+            return QMessageBox.information(self, "提示", "请先添加至少一本 EPUB 后再提取封面")
+
+        dest = self.in_extract_dest.text().strip()
+        if not dest:
+            f, _ = QFileDialog.getSaveFileName(self, "保存提取封面", "", "Images (*.png *.jpg *.jpeg *.webp *.gif)")
+            if not f:
+                return
+            dest = f
+            self.in_extract_dest.setText(dest)
+
+        first_path = Path(self.tree.topLevelItem(0).text(1))
+        extracted = extract_cover_image(first_path, Path(dest))
+        if extracted:
+            QMessageBox.information(self, "成功", f"封面已提取到: {extracted}")
+            self.in_extract_dest.setText(str(extracted))
+        else:
+            QMessageBox.warning(self, "提示", "未找到可提取的封面")
 
 if __name__ == "__main__":
     # 高分屏支持
