@@ -449,6 +449,8 @@ class App(QMainWindow):
         bottom_tree_layout = QHBoxLayout()
         self.hint_lbl = QLabel()
         self.hint_lbl.setStyleSheet("color: #999; font-size: 12px;")
+        self.hint_lbl.setWordWrap(True)
+        self.hint_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.btn_del = QPushButton()
         self.btn_del.setCursor(Qt.PointingHandCursor)
@@ -500,7 +502,6 @@ class App(QMainWindow):
         self.in_out.setReadOnly(False)
 
         self.btn_browse = QPushButton()
-        self.btn_browse.setFixedWidth(90)
         self.btn_browse.clicked.connect(self.on_browse)
 
         self.lbl_output = QLabel()
@@ -519,7 +520,6 @@ class App(QMainWindow):
         cover_row = QHBoxLayout()
         self.in_cover = QLineEdit()
         self.btn_cover = QPushButton()
-        self.btn_cover.setFixedWidth(90)
         self.btn_cover.clicked.connect(self.on_choose_cover)
         self.lbl_cover = QLabel()
         cover_row.addWidget(self.lbl_cover)
@@ -536,10 +536,8 @@ class App(QMainWindow):
         extract_row = QHBoxLayout()
         self.in_extract_dest = QLineEdit()
         self.btn_extract_browse = QPushButton()
-        self.btn_extract_browse.setFixedWidth(70)
         self.btn_extract_browse.clicked.connect(self.on_choose_extract_path)
         self.btn_extract = QPushButton()
-        self.btn_extract.setFixedWidth(120)
         self.btn_extract.clicked.connect(self.on_extract_cover)
         self.lbl_extract = QLabel()
         extract_row.addWidget(self.lbl_extract)
@@ -553,7 +551,6 @@ class App(QMainWindow):
         self.detail_hint = QLabel()
         self.detail_hint.setStyleSheet("color: #666; font-size: 12px;")
         self.btn_detail = QPushButton()
-        self.btn_detail.setFixedWidth(110)
         self.btn_detail.clicked.connect(self.open_detail_dialog)
         detail_row.addWidget(self.detail_hint)
         detail_row.addStretch()
