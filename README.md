@@ -5,7 +5,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/yumizhi/lightweight_epub_merge_tool)](https://github.com/yumizhi/lightweight_epub_merge_tool/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yumizhi/lightweight_epub_merge_tool)](https://github.com/yumizhi/lightweight_epub_merge_tool/network/members)
 
-![Lightweight EPUB Merge Tool Screenshot](./assets/merge_epubs_tool_gui.png)
+![Lightweight EPUB Merge Tool Screenshot](./assets/gui_cn.png)
 
 ---
 
@@ -199,6 +199,8 @@ Gamers DLC - 01
 ## English Guide
 
 A lightweight EPUB merge tool and GUI for multi-volume light novels. It aims to preserve illustrations and chapter structure while rebuilding a volume-grouped TOC.
+
+![Lightweight EPUB Merge Tool Screenshot](./assets/gui_en.png)
 
 ### ✨ Features
 

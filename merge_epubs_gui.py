@@ -35,7 +35,7 @@ QMainWindow, QWidget#CentralWidget {
 }
 QLabel {
     color: #333333;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
 }
 /* 卡片容器 */
@@ -51,9 +51,9 @@ QPushButton {
     border-radius: 6px;
     background-color: #FFFFFF;
     color: #24292E;
-    padding: 6px 12px;
+    padding: 6px 14px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 14px;
 }
 QPushButton:hover {
     background-color: #F3F4F6;
@@ -68,7 +68,7 @@ QPushButton.Primary {
     background-color: #007AFF;
     color: #FFFFFF;
     border: 1px solid #007AFF;
-    font-size: 14px;
+    font-size: 16px;
     padding: 10px 20px;
 }
 QPushButton.Primary:hover {
@@ -108,7 +108,7 @@ QLineEdit:read-only {
 QTreeWidget {
     border: none;
     background-color: transparent;
-    font-size: 13px;
+    font-size: 15px;
     outline: none;
 }
 QTreeWidget::item {
@@ -451,7 +451,7 @@ class App(QMainWindow):
         # 删除按钮悬浮在列表下方或集成在右键菜单，这里放在卡片底部
         bottom_tree_layout = QHBoxLayout()
         self.hint_lbl = QLabel()
-        self.hint_lbl.setStyleSheet("color: #999; font-size: 12px;")
+        self.hint_lbl.setStyleSheet("color: #999; font-size: 14px;")
         self.hint_lbl.setWordWrap(True)
         self.hint_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
@@ -479,7 +479,7 @@ class App(QMainWindow):
         
         # 标题行
         self.st_title = QLabel()
-        self.st_title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 5px;")
+        self.st_title.setStyleSheet("font-weight: bold; font-size: 16px; margin-bottom: 5px;")
         settings_layout.addWidget(self.st_title)
 
         # 主要配置：保留高频项
@@ -564,7 +564,7 @@ class App(QMainWindow):
         # 详细信息弹窗入口
         detail_row = QHBoxLayout()
         self.detail_hint = QLabel()
-        self.detail_hint.setStyleSheet("color: #666; font-size: 12px;")
+        self.detail_hint.setStyleSheet("color: #666; font-size: 14px;")
         self.btn_detail = QPushButton()
         self.btn_detail.clicked.connect(self.open_detail_dialog)
         detail_row.addWidget(self.detail_hint)
@@ -873,10 +873,10 @@ class App(QMainWindow):
         ])
         if has_detail:
             self.detail_hint.setText(self.t("detail_set"))
-            self.detail_hint.setStyleSheet("color: #007AFF; font-size: 12px;")
+            self.detail_hint.setStyleSheet("color: #007AFF; font-size: 14px;")
         else:
             self.detail_hint.setText(self.t("detail_unset"))
-            self.detail_hint.setStyleSheet("color: #666; font-size: 12px;")
+            self.detail_hint.setStyleSheet("color: #666; font-size: 14px;")
 
 if __name__ == "__main__":
 
