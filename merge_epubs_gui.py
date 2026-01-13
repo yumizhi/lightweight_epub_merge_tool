@@ -178,7 +178,10 @@ class StrictTreeWidget(QTreeWidget):
         self.add_cb = add_cb
         self.setHeaderLabels(["目录结构 (卷名 -> 章节)  |  双击重命名", "路径"])
         self.setColumnHidden(1, True)
-        self.header().setSectionResizeMode(0, QHeaderView.Stretch) # 自适应宽度
+        header = self.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents) # 自适应宽度
+        header.setStretchLastSection(True)
+        header.setTextElideMode(Qt.ElideNone)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -252,10 +255,10 @@ class App(QMainWindow):
                 "remove_selected": "移除选中",
                 "settings_title": "输出与封面",
                 "book_title": "书籍标题:",
-                "author": "作者:",
+                "author": "作者 (可选):",
                 "output_file": "输出文件:",
-                "volume_template": "卷标题模板:",
-                "cover": "封面:",
+                "volume_template": "卷标题模板 (可选):",
+                "cover": "封面 (可选):",
                 "extract_cover": "提取封面:",
                 "detail_unset": "详细信息未设置",
                 "detail_set": "已设置详细信息",
@@ -296,12 +299,12 @@ class App(QMainWindow):
                 "msg_extract_done": "封面已提取到: {path}",
                 "msg_no_cover": "未找到可提取的封面",
                 "detail_dialog_title": "详细信息",
-                "detail_language": "语言:",
-                "detail_publisher": "出版社:",
-                "detail_published": "出版日期:",
-                "detail_isbn": "ISBN:",
-                "detail_subject": "主题/标签:",
-                "detail_description": "简介:",
+                "detail_language": "语言 (可选):",
+                "detail_publisher": "出版社 (可选):",
+                "detail_published": "出版日期 (可选):",
+                "detail_isbn": "ISBN (可选):",
+                "detail_subject": "主题/标签 (可选):",
+                "detail_description": "简介 (可选):",
                 "auto_title_suffix": " 合集",
                 "auto_out_suffix": "_merged",
             },
@@ -317,10 +320,10 @@ class App(QMainWindow):
                 "remove_selected": "Remove Selected",
                 "settings_title": "Output & Cover",
                 "book_title": "Book Title:",
-                "author": "Author:",
+                "author": "Author (optional):",
                 "output_file": "Output File:",
-                "volume_template": "Volume Title Template:",
-                "cover": "Cover:",
+                "volume_template": "Volume Title Template (optional):",
+                "cover": "Cover (optional):",
                 "extract_cover": "Extract Cover:",
                 "detail_unset": "Detail info not set",
                 "detail_set": "Detail info set",
@@ -361,12 +364,12 @@ class App(QMainWindow):
                 "msg_extract_done": "Cover extracted to: {path}",
                 "msg_no_cover": "No extractable cover found.",
                 "detail_dialog_title": "Details",
-                "detail_language": "Language:",
-                "detail_publisher": "Publisher:",
-                "detail_published": "Publish date:",
-                "detail_isbn": "ISBN:",
-                "detail_subject": "Subject/Tags:",
-                "detail_description": "Description:",
+                "detail_language": "Language (optional):",
+                "detail_publisher": "Publisher (optional):",
+                "detail_published": "Publish date (optional):",
+                "detail_isbn": "ISBN (optional):",
+                "detail_subject": "Subject/Tags (optional):",
+                "detail_description": "Description (optional):",
                 "auto_title_suffix": " Collection",
                 "auto_out_suffix": "_merged",
             },
@@ -449,6 +452,8 @@ class App(QMainWindow):
         bottom_tree_layout = QHBoxLayout()
         self.hint_lbl = QLabel()
         self.hint_lbl.setStyleSheet("color: #999; font-size: 12px;")
+        self.hint_lbl.setWordWrap(True)
+        self.hint_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.btn_del = QPushButton()
         self.btn_del.setCursor(Qt.PointingHandCursor)
@@ -484,6 +489,8 @@ class App(QMainWindow):
         title_row = QHBoxLayout()
         self.in_title = QLineEdit()
         self.lbl_book_title = QLabel()
+        self.lbl_book_title.setWordWrap(True)
+        self.lbl_book_title.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         title_row.addWidget(self.lbl_book_title)
         title_row.addWidget(self.in_title)
         compact_layout.addLayout(title_row)
@@ -491,6 +498,8 @@ class App(QMainWindow):
         author_row = QHBoxLayout()
         self.in_author = QLineEdit()
         self.lbl_author = QLabel()
+        self.lbl_author.setWordWrap(True)
+        self.lbl_author.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         author_row.addWidget(self.lbl_author)
         author_row.addWidget(self.in_author)
         compact_layout.addLayout(author_row)
@@ -500,10 +509,11 @@ class App(QMainWindow):
         self.in_out.setReadOnly(False)
 
         self.btn_browse = QPushButton()
-        self.btn_browse.setFixedWidth(90)
         self.btn_browse.clicked.connect(self.on_browse)
 
         self.lbl_output = QLabel()
+        self.lbl_output.setWordWrap(True)
+        self.lbl_output.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         path_row.addWidget(self.lbl_output)
         path_row.addWidget(self.in_out)
         path_row.addWidget(self.btn_browse)
@@ -512,6 +522,8 @@ class App(QMainWindow):
         vol_row = QHBoxLayout()
         self.in_volume_label = QLineEdit()
         self.lbl_volume = QLabel()
+        self.lbl_volume.setWordWrap(True)
+        self.lbl_volume.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         vol_row.addWidget(self.lbl_volume)
         vol_row.addWidget(self.in_volume_label)
         compact_layout.addLayout(vol_row)
@@ -519,9 +531,10 @@ class App(QMainWindow):
         cover_row = QHBoxLayout()
         self.in_cover = QLineEdit()
         self.btn_cover = QPushButton()
-        self.btn_cover.setFixedWidth(90)
         self.btn_cover.clicked.connect(self.on_choose_cover)
         self.lbl_cover = QLabel()
+        self.lbl_cover.setWordWrap(True)
+        self.lbl_cover.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         cover_row.addWidget(self.lbl_cover)
         cover_row.addWidget(self.in_cover)
         cover_row.addWidget(self.btn_cover)
@@ -536,12 +549,12 @@ class App(QMainWindow):
         extract_row = QHBoxLayout()
         self.in_extract_dest = QLineEdit()
         self.btn_extract_browse = QPushButton()
-        self.btn_extract_browse.setFixedWidth(70)
         self.btn_extract_browse.clicked.connect(self.on_choose_extract_path)
         self.btn_extract = QPushButton()
-        self.btn_extract.setFixedWidth(120)
         self.btn_extract.clicked.connect(self.on_extract_cover)
         self.lbl_extract = QLabel()
+        self.lbl_extract.setWordWrap(True)
+        self.lbl_extract.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         extract_row.addWidget(self.lbl_extract)
         extract_row.addWidget(self.in_extract_dest)
         extract_row.addWidget(self.btn_extract_browse)
@@ -553,7 +566,6 @@ class App(QMainWindow):
         self.detail_hint = QLabel()
         self.detail_hint.setStyleSheet("color: #666; font-size: 12px;")
         self.btn_detail = QPushButton()
-        self.btn_detail.setFixedWidth(110)
         self.btn_detail.clicked.connect(self.open_detail_dialog)
         detail_row.addWidget(self.detail_hint)
         detail_row.addStretch()
