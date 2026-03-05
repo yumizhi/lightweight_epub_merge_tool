@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import hashlib
 import mimetypes
 import sys
 import uuid
@@ -285,6 +286,29 @@ def _format_volume_label(idx: int, alias: str, language: Optional[str], custom_t
     return LOCALIZED_VOL_LABELS.get("en", "Volume {n}").format(n=idx + 1)
 
 
+def _is_dedup_candidate(media_type: Optional[str]) -> bool:
+    if not media_type:
+        return False
+    normalized = media_type.lower()
+    if normalized.startswith("image/"):
+        return True
+    if normalized in {
+        "text/css",
+        "font/ttf",
+        "font/otf",
+        "font/woff",
+        "font/woff2",
+        "application/font-sfnt",
+        "application/font-woff",
+        "application/vnd.ms-opentype",
+        "application/x-font-ttf",
+        "application/x-font-opentype",
+        "application/x-font-truetype",
+    }:
+        return True
+    return False
+
+
 def merge_epubs(output_path, input_items, title=None, metadata: Optional[Dict[str, Optional[str]]] = None, volume_label_template: Optional[str] = None, cover: Optional[Path] = None, replace_cover: bool = False):
     # input_items: [(path, alias, [renamed_chapters]), ...]
     resolved_out = Path(output_path).expanduser()
@@ -316,6 +340,8 @@ def merge_epubs(output_path, input_items, title=None, metadata: Optional[Dict[st
 
         written = set()
         detected_cover_id = None
+        resource_pool: Dict[Tuple[str, str], str] = {}
+        href_owner_id: Dict[str, str] = {}
 
         for idx, item in enumerate(input_items):
             # item 结构: (path, alias, user_chaps)
@@ -344,11 +370,34 @@ def merge_epubs(output_path, input_items, title=None, metadata: Optional[Dict[st
                                 cover_meta_id = meta.get("content")
                 href_map = {} # old -> new
 
-                for it in bk_man.findall("opf:item", NSMAP):
+                for item_idx, it in enumerate(bk_man.findall("opf:item", NSMAP)):
                     ohref = it.get("href")
-                    if not ohref: continue
-                    nhref = f"{prefix}{ohref}" if prefix else ohref
-                    nid = f"{id_pfx}{it.get('id')}"
+                    if not ohref:
+                        continue
+
+                    item_id = it.get("id") or f"item-{item_idx}"
+                    media_type = it.get("media-type")
+                    preferred_href = f"{prefix}{ohref}" if prefix else ohref
+                    s_path = f"{src_dir}/{ohref}" if src_dir else ohref
+
+                    data = None
+                    try:
+                        data = zin.read(s_path)
+                    except Exception:
+                        data = zin.read(unquote(s_path))
+
+                    final_href = preferred_href
+                    dedupe_key = None
+                    if _is_dedup_candidate(media_type):
+                        digest = hashlib.sha256(data).hexdigest()
+                        dedupe_key = ((media_type or "").lower(), digest)
+                        pooled_href = resource_pool.get(dedupe_key)
+                        if pooled_href:
+                            final_href = pooled_href
+
+                    base_nid = f"{id_pfx}{item_id}"
+                    owner_id = href_owner_id.setdefault(final_href, base_nid)
+                    nid = base_nid if base_nid != owner_id else owner_id
 
                     if idx == 0 and detected_cover_id is None:
                         props = (it.get("properties") or "").split()
@@ -358,25 +407,24 @@ def merge_epubs(output_path, input_items, title=None, metadata: Optional[Dict[st
                             detected_cover_id = nid
 
                     # 记录映射
-                    href_map[ohref] = nhref
-                    href_map[unquote(ohref)] = nhref
+                    href_map[ohref] = final_href
+                    href_map[unquote(ohref)] = final_href
 
                     # 写入文件
-                    s_path = f"{src_dir}/{ohref}" if src_dir else ohref
-                    d_path = f"{opf_dir}/{nhref}" if opf_dir else nhref
-                    
+                    d_path = f"{opf_dir}/{final_href}" if opf_dir else final_href
+
                     if d_path not in written:
                         try:
-                            data = None
-                            try: data = zin.read(s_path)
-                            except: data = zin.read(unquote(s_path))
                             out_zip.writestr(d_path, data)
                             written.add(d_path)
-                        except: pass
-                    
+                            if dedupe_key is not None:
+                                resource_pool[dedupe_key] = final_href
+                        except Exception:
+                            pass
+
                     # 注册 Manifest
                     props = it.get("properties", "").replace("nav", "").strip()
-                    attrs = {"id": nid, "href": nhref, "media-type": it.get("media-type")}
+                    attrs = {"id": nid, "href": final_href, "media-type": media_type}
                     if props: attrs["properties"] = props
                     ET.SubElement(manifest, f"{{{OPF_NS}}}item", attrs)
 
