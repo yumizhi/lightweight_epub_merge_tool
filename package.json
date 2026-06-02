@@ -1,0 +1,30 @@
+{
+  "name": "lightweight-epub-merge-tool-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.json",
+    "check:ts": "tsc -p tsconfig.json --noEmit",
+    "verify:ts": "npm run check:ts",
+    "dev:web": "vite --config web/vite.config.ts --host 127.0.0.1",
+    "build:web": "vite build --config web/vite.config.ts",
+    "verify:web": "npm run build:web",
+    "verify": "npm run verify:ts && npm run verify:web"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.8.0",
+    "fflate": "^0.8.3",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}
