@@ -5,11 +5,17 @@
 !README.md
 !package-lock.json
 !package.json
+!pyproject.toml
 !tsconfig.json
 
 !.github/
 !.github/workflows/
 !.github/workflows/deploy-pages.yml
+
+!src/
+src/*
+!src/epub_merge_tool/
+!src/epub_merge_tool/*.py
 
 !ts/
 ts/*

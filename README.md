@@ -1,8 +1,10 @@
 # Lightweight EPUB Merge Tool
 
-Browser-local EPUB merge, split, and inspect tool.
+Browser-local and CLI EPUB merge, split, and inspect tool.
 
 The web UI runs entirely in the browser. EPUB files are kept in the current browser session and are processed with a Web Worker, so files do not need to be uploaded to a server.
+
+The repository also includes the Python CLI/core implementation under `src/epub_merge_tool/`.
 
 ## Features
 
@@ -47,6 +49,35 @@ Run TypeScript checks and the web build:
 npm run verify
 ```
 
+Run the Python CLI from the project root:
+
+```bash
+PYTHONPATH=src python3 -m epub_merge_tool --help
+```
+
+Install the Python CLI in editable mode:
+
+```bash
+python3 -m pip install -e .
+epub-merge --help
+```
+
+Merge EPUB files from Python:
+
+```bash
+PYTHONPATH=src python3 -m epub_merge_tool merge \
+  --title "My Omnibus" \
+  output.epub \
+  input-1.epub input-2.epub
+```
+
+Inspect or split a tool-generated EPUB:
+
+```bash
+PYTHONPATH=src python3 -m epub_merge_tool inspect output.epub
+PYTHONPATH=src python3 -m epub_merge_tool split output.epub --out-dir split-output
+```
+
 ## GitHub Pages Deployment
 
 This repository includes a manual GitHub Pages workflow:
@@ -69,6 +100,7 @@ If this is the first Pages deployment for the repository, enable Pages with GitH
 ## Project Layout
 
 ```text
+src/         Python CLI/core
 ts/src/      EPUB processing core
 web/src/     React web UI
 web/         Vite app configuration
