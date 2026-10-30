@@ -1,3 +1,4 @@
+import type { ProcessingProgress } from "../../../ts/src/models.js";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { InspectReport } from "../../../ts/src/inspect.js";
@@ -21,6 +22,7 @@ export function useWorkspace(copy: Copy) {
   const [mode, setMode] = useState<Mode>("merge");
   const [books, setBooks] = useState<BookFile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<ProcessingProgress | null>(null);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
   const [outputs, setOutputs] = useState<OutputFile[]>([]);
@@ -39,6 +41,7 @@ export function useWorkspace(copy: Copy) {
     setOutputs([]);
     setReport(null);
     setError("");
+    setProgress(null);
   };
   function reset() {
     generation.current++;
@@ -110,6 +113,7 @@ export function useWorkspace(copy: Copy) {
     setBooks((books) => books.filter((b) => b.status !== "reading"));
     setBusy(false);
     setReading(false);
+    setProgress(null);
     toast(copy.cancelled);
   }
   function move(index: number, direction: number) {
@@ -147,10 +151,7 @@ export function useWorkspace(copy: Copy) {
     );
     toast.success(copy.autoDone);
   }
-  function createOutput(name: string, data: Uint8Array): OutputFile {
-    const blob = new Blob([data as Uint8Array<ArrayBuffer>], {
-      type: name.endsWith(".zip") ? "application/zip" : "application/epub+zip",
-    });
+  function createOutput(name: string, blob: Blob): OutputFile {
     return { name, blob, url: URL.createObjectURL(blob) };
   }
   async function process() {
@@ -175,12 +176,13 @@ export function useWorkspace(copy: Copy) {
               },
             }
           : { type: mode, file: workerFile(books[0].file) },
+        (progress) => { if (current === generation.current) setProgress(progress); },
       );
       if (current !== generation.current) return;
       if (response.type === "merge")
-        setOutputs([createOutput(response.name, response.data)]);
+        setOutputs([createOutput(response.name, response.blob)]);
       if (response.type === "split")
-        setOutputs(response.results.map((r) => createOutput(r.name, r.data)));
+        setOutputs(response.results.map((r) => createOutput(r.name, r.blob)));
       if (response.type === "inspect") setReport(response.report);
       toast.success(copy.completed);
     } catch (error) {
@@ -189,7 +191,7 @@ export function useWorkspace(copy: Copy) {
         toast.error(copy.error);
       }
     } finally {
-      if (current === generation.current) setBusy(false);
+      if (current === generation.current) { setBusy(false); setProgress(null); }
     }
   }
   function download(output: OutputFile) {
@@ -200,16 +202,18 @@ export function useWorkspace(copy: Copy) {
     toast.success(copy.downloadStarted);
   }
   async function downloadAll() {
+    if (locked || !outputs.length) return;
+    setError("");
+    setProgress(null);
     setBusy(true);
     const current = generation.current;
     try {
       const response = await run({
-        type: "archive",
-        files: outputs.map((o) => ({ name: o.name, file: o.blob })),
-      });
+        type: "archive", files: outputs.map((o) => ({ name: o.name, file: o.blob })),
+      }, (progress) => { if (current === generation.current) setProgress(progress); });
       if (current !== generation.current) return;
       if (response.type === "archive") {
-        const output = createOutput(response.name, response.data);
+        const output = createOutput(response.name, response.blob);
         download(output);
         // Give the browser time to consume the object URL, then release it.
         setTimeout(() => URL.revokeObjectURL(output.url), 60_000);
@@ -218,7 +222,7 @@ export function useWorkspace(copy: Copy) {
       if (current === generation.current && !isCancelled(error))
         setError(String(error));
     } finally {
-      if (current === generation.current) setBusy(false);
+      if (current === generation.current) { setBusy(false); setProgress(null); }
     }
   }
   return {
@@ -226,17 +230,18 @@ export function useWorkspace(copy: Copy) {
     changeMode,
     books,
     busy,
+    progress,
     reading,
     locked,
     error,
     outputs,
     report,
     title,
-    setTitle,
+    setTitle: (value: string) => { invalidate(); setTitle(value); },
     outputName,
-    setOutputName,
+    setOutputName: (value: string) => { invalidate(); setOutputName(value); },
     structure,
-    setStructure,
+    setStructure: (value: "volume" | "flat") => { invalidate(); setStructure(value); },
     add,
     reset,
     stop,

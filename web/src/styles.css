@@ -584,3 +584,6 @@ footer a:hover {
     scroll-behavior: auto !important;
   }
 }
+
+.task-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 0.75rem; }
+.task-status > span { min-width: 0; }
