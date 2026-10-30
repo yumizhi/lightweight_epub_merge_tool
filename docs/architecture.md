@@ -20,7 +20,7 @@ Every source gets an independent `vN/` directory. The mapping uses normalized ar
 
 XHTML URI attributes, `srcset`, SVG links, inline styles, CSS `url(...)`, and quoted CSS imports are resolved from the file that contains them. The output reference is relative to that file's new location. Query strings and fragments survive; external and data URIs remain external and are never fetched by the processing code.
 
-Binary images and plain fonts are pooled by media type and SHA-256. SVGs stay separate because their contents can contain relative references. XHTML and stylesheets also stay separate. Each source's merge record stores the resource mapping and reference replacements needed for reconstruction.
+Binary images and plain fonts are pooled by media type and SHA-256. SVGs stay separate because their contents can contain relative references. XHTML and stylesheets also stay separate. A source whose resources all move under the same directory prefix keeps its relative references unchanged; its documents do not need to be decoded and rewritten. Each source's merge record stores the resource mapping and reference replacements needed for reconstruction.
 
 Already compressed image formats and WOFF2 fonts are stored without another compression pass. XML and CSS use ZIP deflate. The EPUB `mimetype` entry is first and uncompressed.
 

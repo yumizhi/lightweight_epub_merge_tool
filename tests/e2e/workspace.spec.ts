@@ -147,7 +147,7 @@ test("keeps language and theme preferences and fits a phone", async ({
   await page.reload();
   await expect(page.locator("html")).toHaveClass("dark");
   await expect(
-    page.getByRole("heading", { name: "把好书，放在一起。" }),
+    page.getByRole("heading", { name: "EPUB 工作台" }),
   ).toBeVisible();
   await page.getByLabel("选择文件", { exact: true }).setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "合并书籍" })).toBeEnabled();
@@ -156,8 +156,10 @@ test("keeps language and theme preferences and fits a phone", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  if (process.env.UPDATE_SCREENSHOTS)
+  if (process.env.UPDATE_SCREENSHOTS) {
+    await expect(page.locator(".task-status")).toHaveCount(0);
     await page.screenshot({ path: "docs/mobile-dark.png", fullPage: true });
+  }
 });
 
 test("caches the Pages application and its Worker for offline processing", async ({
@@ -179,7 +181,7 @@ test("caches the Pages application and its Worker for offline processing", async
   await context.setOffline(true);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Bring your books together." }),
+    page.getByRole("heading", { name: "EPUB workspace" }),
   ).toBeVisible();
   await page
     .getByLabel("Choose files", { exact: true })
@@ -189,4 +191,39 @@ test("caches the Pages application and its Worker for offline processing", async
   await expect(
     page.getByRole("button", { name: "Download", exact: true }),
   ).toBeVisible();
+});
+
+test("animates file reordering and select menus", async ({ page }) => {
+  await page.goto("./");
+  await page
+    .getByLabel("Choose files", { exact: true })
+    .setInputFiles([upload(1), upload(2)]);
+  await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
+  await expect(page.locator(".task-status")).toHaveCount(0);
+  await page.getByRole("button", { name: "Move down: volume-1.epub" }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator(".book-row")
+        .evaluateAll((rows) =>
+          rows.some((row) => getComputedStyle(row).transform !== "none"),
+        ),
+    )
+    .toBe(true);
+  await expect(page.locator(".book-row h3").first()).toHaveText("Volume 2");
+  await page.getByRole("combobox").click();
+  const menu = page.getByRole("listbox");
+  await expect(menu).toBeVisible();
+  expect(
+    await menu.evaluate((node) => getComputedStyle(node).animationName),
+  ).not.toBe("none");
+  await page.keyboard.press("Escape");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await page
+      .getByRole("button", { name: "Merge books" })
+      .evaluate((node) =>
+        parseFloat(getComputedStyle(node).transitionDuration),
+      ),
+  ).toBeLessThan(0.01);
 });

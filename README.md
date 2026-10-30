@@ -14,7 +14,7 @@ A small workspace for your digital library. Merge EPUB volumes, recover individu
 | **Split** | Reconstruct the volumes of an EPUB merged with this tool. Download each book or take all of them in one ZIP. |
 | **Inspect** | Read the title, author, language, package version, reading order, and navigation of an ordinary or merged EPUB. |
 
-The workspace supports drag and drop, automatic volume sorting, manual reordering, cancellation, English and Chinese, and light and dark themes. It also works on a phone.
+The workspace supports drag and drop, automatic volume sorting, manual reordering, cancellation, English and Chinese, and light and dark themes. It also works on a phone. File reordering, menus, task states, and output panels use short animations and respect reduced-motion preferences.
 
 EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, CSS, images, SVG references, and plain fonts, including nested relative paths. Matching binary images and fonts are stored once in a merged book.
 
@@ -46,7 +46,7 @@ npm run preview:web
 
 The **Deploy Web UI to GitHub Pages** workflow is manual. It checks and builds the app at `/lightweight_epub_merge_tool/`, then deploys `dist-web/`. The Worker, icons, manifest, and service worker use this same base path.
 
-To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. This branch's v1.0 changes require that deployment before they appear on the hosted site.
+To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. The **Deploy v1 preview** workflow builds this branch at `/lightweight_epub_merge_tool/preview/` and keeps the current `main` application at the root URL. Updates to `feat/epub-toolkit-v1` refresh that preview. The main branch is not merged by either workflow.
 
 ## Python CLI
 

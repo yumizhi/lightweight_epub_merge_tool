@@ -2,9 +2,8 @@ export type Language = "en" | "zh";
 export const COPY = {
   en: {
     tagline: "A little order for your digital library.",
-    intro: "Bring your books together.",
-    description:
-      "Merge volumes, recover individual books, and look inside your EPUBs. Right here, on your device.",
+    intro: "EPUB workspace",
+    description: "Merge, split, and inspect EPUB files in your browser.",
     merge: "Merge",
     split: "Split",
     inspect: "Inspect",
@@ -26,7 +25,7 @@ export const COPY = {
     remove: "Remove",
     up: "Move up",
     down: "Move down",
-    settings: "Make it yours",
+    settings: "Output settings",
     bookTitle: "Collection title",
     outputName: "Output filename",
     structure: "Table of contents",
@@ -42,13 +41,13 @@ export const COPY = {
     reading: "Reading metadata…",
     ready: "Ready",
     failed: "Could not read this book",
-    completed: "All done",
+    completed: "Processing complete",
     cancelled: "Task cancelled",
     download: "Download",
     downloadAll: "Download all (.zip)",
-    results: "Ready to take with you",
+    results: "Output files",
     downloadStarted: "Download started",
-    error: "Something needs your attention",
+    error: "Processing failed",
     privacy: "Your books stay yours.",
     privacyHint:
       "Files are processed locally. Nothing is uploaded or saved after you leave.",
@@ -94,9 +93,8 @@ export const COPY = {
   },
   zh: {
     tagline: "让你的数字书架，井然有序。",
-    intro: "把好书，放在一起。",
-    description:
-      "合并分卷、恢复单册、查看 EPUB 结构。所有操作，都在你的设备上完成。",
+    intro: "EPUB 工作台",
+    description: "在浏览器中合并、拆分和检查 EPUB 文件。",
     merge: "合并",
     split: "拆分",
     inspect: "检查",

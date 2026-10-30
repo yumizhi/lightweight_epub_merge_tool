@@ -1,0 +1,50 @@
+name: Deploy v1 preview
+on:
+  push:
+    branches: [feat/epub-toolkit-v1]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}preview/
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build the current published application
+        run: |
+          git worktree add --detach /tmp/epub-current origin/main
+          npm ci --prefix /tmp/epub-current
+          cd /tmp/epub-current
+          GITHUB_PAGES=true npm run build:web
+      - name: Check and build the reviewed preview
+        run: |
+          npm ci
+          npm run check:ts
+          npm run check:web
+          npm test
+          npm run build:web -- --base=/lightweight_epub_merge_tool/preview/
+          mkdir -p /tmp/epub-current/dist-web/preview
+          cp -a dist-web/. /tmp/epub-current/dist-web/preview/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: /tmp/epub-current/dist-web
+      - uses: actions/deploy-pages@v4
+        id: deployment

@@ -1,16 +1,14 @@
 import {
   ArrowDown,
   ArrowUp,
-  BookOpen,
   Check,
   CircleAlert,
   LoaderCircle,
   Plus,
-  Trash2,
-  WandSparkles,
+  X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { formatSize } from "../lib/utils";
 import type { BookFile } from "../hooks/useWorkspace";
 import type { Copy } from "../i18n";
@@ -38,12 +36,10 @@ export function FileQueue({
   return (
     <section className="queue" aria-label={copy.queue}>
       <div className="section-heading">
-        <div className="flex items-center gap-2">
-          <h2>{merge ? copy.queue : copy.source}</h2>
-          <Badge variant="secondary">
-            {books.length.toString().padStart(2, "0")}
-          </Badge>
-        </div>
+        <h2>
+          {merge ? copy.queue : copy.source}
+          <span className="file-count">{books.length}</span>
+        </h2>
         <div className="flex gap-1">
           {merge && (
             <Button
@@ -52,7 +48,6 @@ export function FileQueue({
               disabled={locked || books.length < 2}
               onClick={onSort}
             >
-              <WandSparkles />
               {copy.auto}
             </Button>
           )}
@@ -62,85 +57,94 @@ export function FileQueue({
         </div>
       </div>
       <div className="book-list">
-        {books.map((book, index) => (
-          <article className="book-row" key={book.id}>
-            <span className="book-index">
-              {String(index + 1).padStart(2, "0")}
-            </span>
-            <div className={`book-cover cover-${index % 4}`} aria-hidden="true">
-              <BookOpen size={22} strokeWidth={1.5} />
-              <span>EPUB</span>
-            </div>
-            <div className="book-info">
-              <h3>{book.title || book.file.name}</h3>
-              <p title={book.file.name}>{book.file.name}</p>
-              <div className="book-meta">
-                <span>{formatSize(book.file.size)}</span>
-                {book.chapters !== undefined && (
-                  <span>
-                    {book.chapters} {copy.chapters}
-                  </span>
-                )}
-                <span
-                  className={
-                    book.status === "error" ? "text-destructive" : "status-text"
-                  }
-                >
-                  {book.status === "reading" ? (
-                    <>
-                      <LoaderCircle className="animate-spin" />
-                      {copy.reading}
-                    </>
-                  ) : book.status === "error" ? (
-                    <>
-                      <CircleAlert />
-                      {copy.failed}
-                    </>
-                  ) : (
-                    <>
-                      <Check />
-                      {copy.ready}
-                    </>
+        <AnimatePresence initial={false}>
+          {books.map((book, index) => (
+            <motion.article
+              className="book-row"
+              key={book.id}
+              layout
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 }}
+              transition={{
+                layout: { type: "spring", stiffness: 420, damping: 38 },
+                opacity: { duration: 0.15 },
+              }}
+            >
+              <span className="book-index">{index + 1}</span>
+              <div className="book-info">
+                <h3>{book.title || book.file.name}</h3>
+                <p title={book.file.name}>{book.file.name}</p>
+                <div className="book-meta">
+                  <span>{formatSize(book.file.size)}</span>
+                  {book.chapters !== undefined && (
+                    <span>
+                      {book.chapters} {copy.chapters}
+                    </span>
                   )}
-                </span>
-              </div>
-              {book.error && <p className="file-error">{book.error}</p>}
-            </div>
-            <div className="book-actions">
-              {merge && (
-                <div className="order-buttons">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${copy.up}: ${book.file.name}`}
-                    disabled={locked || index === 0}
-                    onClick={() => onMove(index, -1)}
+                  <span
+                    className={
+                      book.status === "error"
+                        ? "text-destructive"
+                        : "status-text"
+                    }
                   >
-                    <ArrowUp />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${copy.down}: ${book.file.name}`}
-                    disabled={locked || index === books.length - 1}
-                    onClick={() => onMove(index, 1)}
-                  >
-                    <ArrowDown />
-                  </Button>
+                    {book.status === "reading" ? (
+                      <>
+                        <LoaderCircle className="animate-spin" />
+                        {copy.reading}
+                      </>
+                    ) : book.status === "error" ? (
+                      <>
+                        <CircleAlert />
+                        {copy.failed}
+                      </>
+                    ) : (
+                      <>
+                        <Check />
+                        {copy.ready}
+                      </>
+                    )}
+                  </span>
                 </div>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`${copy.remove}: ${book.file.name}`}
-                disabled={locked}
-                onClick={() => onRemove(book.id)}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          </article>
-        ))}
+                {book.error && <p className="file-error">{book.error}</p>}
+              </div>
+              <div className="book-actions">
+                {merge && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${copy.up}: ${book.file.name}`}
+                      disabled={locked || index === 0}
+                      onClick={() => onMove(index, -1)}
+                    >
+                      <ArrowUp />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${copy.down}: ${book.file.name}`}
+                      disabled={locked || index === books.length - 1}
+                      onClick={() => onMove(index, 1)}
+                    >
+                      <ArrowDown />
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${copy.remove}: ${book.file.name}`}
+                  disabled={locked}
+                  onClick={() => onRemove(book.id)}
+                >
+                  <X />
+                </Button>
+              </div>
+            </motion.article>
+          ))}
+        </AnimatePresence>
       </div>
       {merge && (
         <div className="queue-bottom">

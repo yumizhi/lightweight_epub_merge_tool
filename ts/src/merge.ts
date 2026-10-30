@@ -13,7 +13,6 @@ import type {
   ManifestItem,
   MergeOptions,
   MergeResult,
-  SourceBook,
   TocEntry,
 } from "./models.js";
 import { safeBasename, sha256, utf8Encode } from "./utils.js";
@@ -50,9 +49,15 @@ export function mergeEpubs(
   if (!inputs.length)
     throw new EpubMergeError("At least one input EPUB is required");
 
-  let sources = inputs.map(readBookSummary);
-  rejectDuplicateBasenames(sources);
-  if (!options.inputOrder) sources = sortSources(sources);
+  rejectDuplicateBasenames(inputs);
+  const inputByName = new Map(
+    inputs.map((input) => [safeBasename(input.name), input]),
+  );
+  const orderedInputs = options.inputOrder
+    ? inputs
+    : sortSources(inputs.map(readBookSummary)).map(
+        (summary) => inputByName.get(summary.basename)!,
+      );
 
   const title = options.title ?? outputName.replace(/\.epub$/i, "");
   const zipEntries: ZipEntry[] = baseZipEntries();
@@ -67,12 +72,14 @@ export function mergeEpubs(
   const manifestSources: Record<string, unknown>[] = [];
   let firstHref = "#";
   let hasCover = false;
+  let language = "en";
+  const creators = new Set<string>();
 
-  sources.forEach((summary, sourceIndex) => {
-    // Inflate one source at a time; completed sources are no longer retained.
-    const source = readSourceBook(
-      inputs.find((input) => safeBasename(input.name) === summary.basename)!,
-    );
+  orderedInputs.forEach((input, sourceIndex) => {
+    // Explicit input order needs no metadata prepass.
+    const source = readSourceBook(input);
+    if (sourceIndex === 0) language = source.language;
+    for (const creator of source.creators) creators.add(creator);
     const prefix = `v${sourceIndex + 1}/`;
     const hrefMap = new Map<string, string>();
     const idMap = new Map<string, string>();
@@ -122,6 +129,12 @@ export function mergeEpubs(
       });
     }
 
+    // A uniform directory prefix preserves every relative reference. Only
+    // pooled resources can require rewriting the source documents.
+    const needsRewrite = [...hrefMap].some(
+      ([original, destination]) =>
+        destination !== encodePath(`${prefix}${original}`),
+    );
     for (const item of source.manifestItems) {
       if (item.mediaType === "application/x-dtbncx+xml") continue;
       let data = source.itemData.get(item.href);
@@ -132,16 +145,17 @@ export function mergeEpubs(
       const originalPath = resolvePath(source.opfDir, item.href);
       const finalHref = hrefMap.get(originalPath)!;
       const rewriteMap: Record<string, string> = {};
-      data = rewriteReferences(data, item.mediaType, (href) => {
-        const result = remapReference(
-          href,
-          originalPath,
-          decodeURIComponent(finalHref),
-          hrefMap,
-        );
-        if (result !== href) rewriteMap[href] = result;
-        return result;
-      });
+      if (needsRewrite)
+        data = rewriteReferences(data, item.mediaType, (href) => {
+          const result = remapReference(
+            href,
+            originalPath,
+            decodeURIComponent(finalHref),
+            hrefMap,
+          );
+          if (result !== href) rewriteMap[href] = result;
+          return result;
+        });
       if (Object.keys(rewriteMap).length) rewrites[item.href] = rewriteMap;
       const zipName = `OEBPS/${decodeURIComponent(finalHref)}`;
       if (!written.has(zipName)) {
@@ -198,13 +212,7 @@ export function mergeEpubs(
   });
   zipEntries.push({
     name: "OEBPS/content.opf",
-    data: buildOpf(
-      title,
-      sources[0].language,
-      [...new Set(sources.flatMap((source) => source.creators))],
-      outputItems,
-      spineIds,
-    ),
+    data: buildOpf(title, language, [...creators], outputItems, spineIds),
   });
   zipEntries.push({
     name: MERGE_MANIFEST_PATH,
@@ -215,7 +223,7 @@ export function mergeEpubs(
           tool_version: "1.0.0",
           structure,
           title,
-          language: sources[0].language,
+          language: language,
           sources: manifestSources,
         },
         null,
@@ -226,10 +234,10 @@ export function mergeEpubs(
   return { name: outputName, data: writeZip(zipEntries) };
 }
 
-function rejectDuplicateBasenames(sources: SourceBook[]): void {
+function rejectDuplicateBasenames(inputs: InputFile[]): void {
   const seen = new Set<string>();
-  for (const source of sources) {
-    const basename = safeBasename(source.basename);
+  for (const input of inputs) {
+    const basename = safeBasename(input.name);
     if (seen.has(basename))
       throw new EpubMergeError(`Duplicate source basename: ${basename}`);
     seen.add(basename);
