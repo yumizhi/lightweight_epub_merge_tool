@@ -176,7 +176,9 @@ export function useWorkspace(copy: Copy) {
               },
             }
           : { type: mode, file: workerFile(books[0].file) },
-        (progress) => { if (current === generation.current) setProgress(progress); },
+        (progress) => {
+          if (current === generation.current) setProgress(progress);
+        },
       );
       if (current !== generation.current) return;
       if (response.type === "merge")
@@ -191,7 +193,10 @@ export function useWorkspace(copy: Copy) {
         toast.error(copy.error);
       }
     } finally {
-      if (current === generation.current) { setBusy(false); setProgress(null); }
+      if (current === generation.current) {
+        setBusy(false);
+        setProgress(null);
+      }
     }
   }
   function download(output: OutputFile) {
@@ -208,9 +213,15 @@ export function useWorkspace(copy: Copy) {
     setBusy(true);
     const current = generation.current;
     try {
-      const response = await run({
-        type: "archive", files: outputs.map((o) => ({ name: o.name, file: o.blob })),
-      }, (progress) => { if (current === generation.current) setProgress(progress); });
+      const response = await run(
+        {
+          type: "archive",
+          files: outputs.map((o) => ({ name: o.name, file: o.blob })),
+        },
+        (progress) => {
+          if (current === generation.current) setProgress(progress);
+        },
+      );
       if (current !== generation.current) return;
       if (response.type === "archive") {
         const output = createOutput(response.name, response.blob);
@@ -222,7 +233,10 @@ export function useWorkspace(copy: Copy) {
       if (current === generation.current && !isCancelled(error))
         setError(String(error));
     } finally {
-      if (current === generation.current) { setBusy(false); setProgress(null); }
+      if (current === generation.current) {
+        setBusy(false);
+        setProgress(null);
+      }
     }
   }
   return {
@@ -237,11 +251,20 @@ export function useWorkspace(copy: Copy) {
     outputs,
     report,
     title,
-    setTitle: (value: string) => { invalidate(); setTitle(value); },
+    setTitle: (value: string) => {
+      invalidate();
+      setTitle(value);
+    },
     outputName,
-    setOutputName: (value: string) => { invalidate(); setOutputName(value); },
+    setOutputName: (value: string) => {
+      invalidate();
+      setOutputName(value);
+    },
     structure,
-    setStructure: (value: "volume" | "flat") => { invalidate(); setStructure(value); },
+    setStructure: (value: "volume" | "flat") => {
+      invalidate();
+      setStructure(value);
+    },
     add,
     reset,
     stop,

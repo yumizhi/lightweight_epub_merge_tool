@@ -106,7 +106,11 @@ def merge_epubs(
                             properties=tuple(prop for prop in item.properties if prop != "nav" and (prop != "cover-image" or not has_cover)),
                         )
                     )
-                if "cover-image" in item.properties:
+                if "cover-image" in item.properties and not has_cover:
+                    for owner_index, owner in enumerate(manifest_items):
+                        if owner.href == output_href and "cover-image" not in owner.properties:
+                            manifest_items[owner_index] = ManifestItem(owner.item_id, owner.href, owner.media_type, (*owner.properties, "cover-image"))
+                            break
                     has_cover = True
                 id_map[item.item_id] = owner_id
                 file_records.append(
@@ -149,7 +153,7 @@ def merge_epubs(
             if first_href == "#":
                 first_href = source_href
             source_tocs.append((source.title, source_href, remapped_toc))
-            flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc)
+            flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc if entry.href)
             manifest_sources.append(
                 {
                     "basename": source.basename,

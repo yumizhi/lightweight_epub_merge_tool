@@ -6,10 +6,15 @@
     "rootDir": "ts",
     "outDir": "dist-ts",
     "strict": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true
   },
-  "include": ["ts/**/*.ts"]
+  "include": [
+    "ts/**/*.ts"
+  ]
 }

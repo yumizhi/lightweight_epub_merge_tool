@@ -19,4 +19,6 @@ export type WorkerResponse =
   | { type: "split"; results: { name: string; blob: Blob }[] }
   | { type: "inspect"; report: InspectReport }
   | { type: "error"; message: string };
-export type WorkerReply = (WorkerResponse | { type: "progress"; progress: ProcessingProgress }) & { requestId: number };
+export type WorkerReply = (
+  WorkerResponse | { type: "progress"; progress: ProcessingProgress }
+) & { requestId: number };

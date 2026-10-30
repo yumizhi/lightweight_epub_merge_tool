@@ -7,12 +7,14 @@ export const encodePath = (path: string) =>
   path.split("/").map(encodeURIComponent).join("/");
 // ZIP names and merge-record opf_path values are literal archive paths.
 export function archivePath(path: string): string {
-  if (path.startsWith("/") || path.includes("\\")) throw new InvalidEpubError(`Unsupported archive path: ${path}`);
+  if (path.startsWith("/") || path.includes("\\"))
+    throw new InvalidEpubError(`Unsupported archive path: ${path}`);
   const parts: string[] = [];
   for (const part of path.split("/")) {
     if (!part || part === ".") continue;
     if (part === "..") {
-      if (!parts.length) throw new InvalidEpubError(`Archive path escapes the EPUB: ${path}`);
+      if (!parts.length)
+        throw new InvalidEpubError(`Archive path escapes the EPUB: ${path}`);
       parts.pop();
     } else parts.push(part);
   }
@@ -40,7 +42,9 @@ export function remapReference(
   paths: Map<string, string>,
 ): string {
   if (!href || href.startsWith("#") || isExternal(href)) return href;
-  const target = href.startsWith("?") ? fromPath : resolvePath(dirnamePosix(fromPath), href);
+  const target = href.startsWith("?")
+    ? fromPath
+    : resolvePath(dirnamePosix(fromPath), href);
   const mapped = paths.get(target);
   if (mapped === undefined)
     throw new InvalidEpubError(
@@ -49,7 +53,11 @@ export function remapReference(
   const suffix = href.slice(
     href.search(/[?#]/) < 0 ? href.length : href.search(/[?#]/),
   );
-  if (relPosix(dirnamePosix(fromPath), target) === relPosix(dirnamePosix(outputPath), decodeURIComponent(mapped))) return href;
+  if (
+    relPosix(dirnamePosix(fromPath), target) ===
+    relPosix(dirnamePosix(outputPath), decodeURIComponent(mapped))
+  )
+    return href;
   return (
     encodePath(relPosix(dirnamePosix(outputPath), decodeURIComponent(mapped))) +
     suffix
@@ -77,7 +85,10 @@ function xmlDecode(value: string) {
     },
   );
 }
-function cssReferences(text: string, rewrite: (href: string) => string): string {
+function cssReferences(
+  text: string,
+  rewrite: (href: string) => string,
+): string {
   // Match complete comments and strings before looking inside CSS functions.
   // This leaves examples such as content: "url(missing.png)" alone.
   return text.replace(
@@ -85,23 +96,48 @@ function cssReferences(text: string, rewrite: (href: string) => string): string 
     (token, double, single, bare, importDouble, importSingle) => {
       const raw = double ?? single ?? bare ?? importDouble ?? importSingle;
       if (raw === undefined) return token;
-      const href = raw.replace(/\\([\da-f]{1,6}\s?|\r\n|[\s\S])/gi, (_: string, escaped: string) =>
-        /^[\da-f]/i.test(escaped) ? String.fromCodePoint(parseInt(escaped.trim(), 16)) : /[\r\n\f]/.test(escaped) ? "" : escaped,
+      const href = raw.replace(
+        /\\([\da-f]{1,6}\s?|\r\n|[\s\S])/gi,
+        (_: string, escaped: string) =>
+          /^[\da-f]/i.test(escaped)
+            ? String.fromCodePoint(parseInt(escaped.trim(), 16))
+            : /[\r\n\f]/.test(escaped)
+              ? ""
+              : escaped,
       );
       const result = rewrite(href);
       if (result === href) return token;
       const escaped = result.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-      return /^@import/i.test(token) ? `@import "${escaped}"` : `url("${escaped}")`;
+      return /^@import/i.test(token)
+        ? `@import "${escaped}"`
+        : `url("${escaped}")`;
     },
   );
 }
-const CSS_ATTRIBUTES = new Set(["style", "fill", "stroke", "filter", "clip-path", "mask", "cursor", "marker", "marker-start", "marker-mid", "marker-end"]);
+const CSS_ATTRIBUTES = new Set([
+  "style",
+  "fill",
+  "stroke",
+  "filter",
+  "clip-path",
+  "mask",
+  "cursor",
+  "marker",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+]);
 const URI_ATTRIBUTES = new Set(["href", "src", "poster", "data", "xlink:href"]);
-function srcsetReferences(value: string, rewrite: (href: string) => string): string {
+function srcsetReferences(
+  value: string,
+  rewrite: (href: string) => string,
+): string {
   // A data URL can contain commas. Its URL ends at whitespace, while ordinary
   // candidates may also end at a comma. Descriptors are left untouched.
-  return value.replace(/(^|,\s*)(data:[^\s]+|[^\s,]+)([^,]*)/gi,
-    (_, start, href, descriptor) => start + rewrite(href) + descriptor);
+  return value.replace(
+    /(^|,\s*)(data:[^\s]+|[^\s,]+)([^,]*)/gi,
+    (_, start, href, descriptor) => start + rewrite(href) + descriptor,
+  );
 }
 // Keep markup and unchanged bytes. Only actual attributes are visited, including
 // > inside quotes; scripts, comments and CDATA are consumed as complete tokens.
@@ -117,22 +153,58 @@ export function rewriteReferences(
     const result = cssReferences(original, rewrite);
     return result === original ? data : utf8Encode(result);
   }
+  const rewriteTag = (tag: string) =>
+    tag.replace(
+      /(\s([\w:.-]+)\s*=\s*)(["'])([\s\S]*?)\3/g,
+      (
+        attribute,
+        prefix: string,
+        name: string,
+        quote: string,
+        value: string,
+      ) => {
+        name = name.toLowerCase();
+        if (
+          !URI_ATTRIBUTES.has(name) &&
+          !CSS_ATTRIBUTES.has(name) &&
+          name !== "srcset"
+        )
+          return attribute;
+        const decoded = xmlDecode(value);
+        const result = CSS_ATTRIBUTES.has(name)
+          ? cssReferences(decoded, rewrite)
+          : name === "srcset"
+            ? srcsetReferences(decoded, rewrite)
+            : rewrite(decoded);
+        if (result === decoded) return attribute;
+        return (
+          prefix +
+          quote +
+          result
+            .replaceAll("&", "&amp;")
+            .replaceAll(quote, quote === '"' ? "&quot;" : "&apos;") +
+          quote
+        );
+      },
+    );
+  // Attribute-free paragraphs have no references. Consume style/script bodies
+  // as whole tokens so tag-like strings inside them never become attributes.
   const text = original.replace(
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script\s*>|<[a-z][\w:.-]*(?:[^>"']|"[^"]*"|'[^']*')*>|(<\/style\s*>)/gi,
-    (tag) => {
-      if (/^<!|^<script\b|^<\//i.test(tag)) return tag;
-      return tag.replace(/(\s([\w:.-]+)\s*=\s*)(["'])([\s\S]*?)\3/g,
-        (attribute, prefix: string, name: string, quote: string, value: string) => {
-          name = name.toLowerCase();
-          if (!URI_ATTRIBUTES.has(name) && !CSS_ATTRIBUTES.has(name) && name !== "srcset") return attribute;
-          const decoded = xmlDecode(value);
-          const result = CSS_ATTRIBUTES.has(name) ? cssReferences(decoded, rewrite)
-            : name === "srcset" ? srcsetReferences(decoded, rewrite) : rewrite(decoded);
-          if (result === decoded) return attribute;
-          return prefix + quote + result.replaceAll("&", "&amp;").replaceAll(quote, quote === '"' ? "&quot;" : "&apos;") + quote;
-        });
+    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|<[a-z][\w:.-]*\s+(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    (tag, block: string | undefined) => {
+      if (tag.startsWith("<!")) return tag;
+      if (!block) return rewriteTag(tag);
+      const opening = /^<[a-z]+\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(tag)![0];
+      const end = tag.lastIndexOf("</");
+      const content = tag.slice(opening.length, end);
+      return (
+        rewriteTag(opening) +
+        (block.toLowerCase() === "style"
+          ? cssReferences(content, rewrite)
+          : content) +
+        tag.slice(end)
+      );
     },
-  ).replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<script\b[^>]*>[\s\S]*?<\/script\s*>|(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style\s*>)/gi,
-    (match, start, content, end) => start ? start + cssReferences(content, rewrite) + end : match);
+  );
   return text === original ? data : utf8Encode(text);
 }

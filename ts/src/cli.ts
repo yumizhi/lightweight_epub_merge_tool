@@ -1,6 +1,14 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, openAsBlob } from "node:fs";
-import { join } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  openAsBlob,
+  createWriteStream,
+} from "node:fs";
+import { join, basename } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 import { EpubMergeError } from "./errors.js";
 import { inspectEpub } from "./inspect.js";
 import { mergeEpubFiles } from "./merge.js";
@@ -53,11 +61,18 @@ async function runMerge(args: string[]): Promise<number> {
     throw new EpubMergeError("merge requires OUTPUT and INPUT...");
   const [output, ...inputs] = rest;
   const result = await mergeEpubFiles(
-    output,
-    await Promise.all(inputs.map(async (name) => ({ name, file: await openAsBlob(name) }))),
+    basename(output),
+    await Promise.all(
+      inputs.map(async (name) => ({ name, file: await openAsBlob(name) })),
+    ),
     { title, structure, inputOrder },
   );
-  writeFileSync(output, new Uint8Array(await result.blob.arrayBuffer()));
+  await pipeline(
+    Readable.fromWeb(
+      result.blob.stream() as import("node:stream/web").ReadableStream<Uint8Array>,
+    ),
+    createWriteStream(output),
+  );
   return 0;
 }
 
@@ -87,8 +102,8 @@ function runSplit(args: string[]): number {
 }
 
 function usage(): void {
-  console.log(`EPUB Toolkit 1.0.0
-usage: node dist-ts/src/cli.js COMMAND
+  console.log(`EPUB Toolkit 1.1.0
+usage: epub-toolkit COMMAND
   merge OUTPUT INPUT... [--title TITLE] [--structure volume|flat] [--input-order]
   split INPUT --out-dir DIR
   inspect INPUT

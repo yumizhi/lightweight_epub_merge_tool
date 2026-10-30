@@ -59,8 +59,14 @@ export interface SplitResult {
   data: Uint8Array;
 }
 
-export interface BlobInput { name: string; file: Blob; }
-export interface BlobResult { name: string; blob: Blob; }
+export interface BlobInput {
+  name: string;
+  file: Blob;
+}
+export interface BlobResult {
+  name: string;
+  blob: Blob;
+}
 export interface ProcessingProgress {
   phase: "reading" | "resources" | "writing" | "restoring" | "packing";
   completed: number;

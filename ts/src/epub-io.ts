@@ -61,6 +61,28 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     `${basename}: missing spine`,
   );
 
+  const metaNodes = asArray(localKey(metadata, "meta")) as Array<
+    Record<string, unknown>
+  >;
+  if (
+    metaNodes.some(
+      (node) =>
+        node["@_property"] === "rendition:layout" &&
+        textValue(node) === "pre-paginated",
+    )
+  )
+    throw new InvalidEpubError(
+      `${basename}: fixed-layout EPUBs are not supported`,
+    );
+  if (
+    asArray(localKey(manifestNode, "item")).some(
+      (node) => !!(node as Record<string, unknown>)["@_media-overlay"],
+    )
+  )
+    throw new InvalidEpubError(
+      `${basename}: EPUB media overlays are not supported`,
+    );
+
   const title =
     textValue(localKey(metadata, "title")) ?? basename.replace(/\.epub$/i, "");
   const language = textValue(localKey(metadata, "language")) ?? "en";
@@ -84,23 +106,43 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     return { id, href, mediaType, properties };
   });
 
-  const coverId = asArray(localKey(metadata, "meta")).find((value) => value && typeof value === "object" && (value as Record<string, unknown>)["@_name"] === "cover") as Record<string, unknown> | undefined;
+  const coverId = asArray(localKey(metadata, "meta")).find(
+    (value) =>
+      value &&
+      typeof value === "object" &&
+      (value as Record<string, unknown>)["@_name"] === "cover",
+  ) as Record<string, unknown> | undefined;
   const cover = items.find((item) => item.id === coverId?.["@_content"]);
-  if (cover && !cover.properties.includes("cover-image")) cover.properties.push("cover-image");
+  if (cover && !cover.properties.includes("cover-image"))
+    cover.properties.push("cover-image");
   const identifierId = stringAttr(opfRoot, "unique-identifier");
   const identifiers = asArray(localKey(metadata, "identifier"));
-  const identifier = identifiers.find((value) => value && typeof value === "object" && (value as Record<string, unknown>)["@_id"] === identifierId) ?? identifiers[0];
+  const identifier =
+    identifiers.find(
+      (value) =>
+        value &&
+        typeof value === "object" &&
+        (value as Record<string, unknown>)["@_id"] === identifierId,
+    ) ?? identifiers[0];
   const packageMetadata: PackageMetadata = {
     identifier: textValue(identifier),
     publisher: textValue(localKey(metadata, "publisher")),
     description: textValue(localKey(metadata, "description")),
     rights: textValue(localKey(metadata, "rights")),
     date: textValue(localKey(metadata, "date")),
-    subjects: asArray(localKey(metadata, "subject")).map(textValue).filter((v): v is string => !!v),
-    pageProgressionDirection: stringAttr(spineNode, "page-progression-direction"),
+    subjects: asArray(localKey(metadata, "subject"))
+      .map(textValue)
+      .filter((v): v is string => !!v),
+    pageProgressionDirection: stringAttr(
+      spineNode,
+      "page-progression-direction",
+    ),
     spine: asArray(localKey(spineNode, "itemref")).map((value) => {
       const node = value as Record<string, unknown>;
-      return { linear: stringAttr(node, "linear"), properties: stringAttr(node, "properties") };
+      return {
+        linear: stringAttr(node, "linear"),
+        properties: stringAttr(node, "properties"),
+      };
     }),
   };
   const names = metadataOnly ? zipNames(input.data) : undefined;
@@ -213,8 +255,17 @@ export function buildOpf(
           "@_property": "dcterms:modified",
           "#text": new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
         },
-        ...Object.fromEntries(["publisher", "description", "rights", "date"].filter((key) => metadata[key as keyof PackageMetadata]).map((key) => [`dc:${key}`, metadata[key as keyof PackageMetadata]])),
-        ...(metadata.subjects?.length ? { "dc:subject": metadata.subjects } : {}),
+        ...Object.fromEntries(
+          ["publisher", "description", "rights", "date"]
+            .filter((key) => metadata[key as keyof PackageMetadata])
+            .map((key) => [
+              `dc:${key}`,
+              metadata[key as keyof PackageMetadata],
+            ]),
+        ),
+        ...(metadata.subjects?.length
+          ? { "dc:subject": metadata.subjects }
+          : {}),
         "dc:title": title,
         "dc:language": language,
         ...(creators.length ? { "dc:creator": creators } : {}),
@@ -231,10 +282,19 @@ export function buildOpf(
         ],
       },
       spine: {
-        ...(metadata.pageProgressionDirection ? { "@_page-progression-direction": metadata.pageProgressionDirection } : {}),
-        itemref: spineIds.map((id, index) => ({ "@_idref": id,
-          ...(metadata.spine?.[index]?.linear ? { "@_linear": metadata.spine[index].linear } : {}),
-          ...(metadata.spine?.[index]?.properties ? { "@_properties": metadata.spine[index].properties } : {}),
+        ...(metadata.pageProgressionDirection
+          ? {
+              "@_page-progression-direction": metadata.pageProgressionDirection,
+            }
+          : {}),
+        itemref: spineIds.map((id, index) => ({
+          "@_idref": id,
+          ...(metadata.spine?.[index]?.linear
+            ? { "@_linear": metadata.spine[index].linear }
+            : {}),
+          ...(metadata.spine?.[index]?.properties
+            ? { "@_properties": metadata.spine[index].properties }
+            : {}),
         })),
       },
     },
@@ -279,7 +339,9 @@ function tocList(entries: TocEntry[]): string {
       if (depth > previous) html += "<ol>";
       else html += "</li>" + "</ol></li>".repeat(previous - depth);
     }
-    html += entry.href ? `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>` : `<li><span>${escapeXml(entry.title)}</span>`;
+    html += entry.href
+      ? `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>`
+      : `<li><span>${escapeXml(entry.title)}</span>`;
     previous = depth;
   });
   return html + (entries.length ? "</li>" + "</ol></li>".repeat(previous) : "");
@@ -321,7 +383,10 @@ function readOpfPath(zip: Pick<Map<string, Uint8Array>, "get">): string {
     asArray(localKey(rootfiles, "rootfile"))[0],
     "missing rootfile",
   );
-  return resolvePath("", attr(rootfile, "full-path", "rootfile missing full-path"));
+  return resolvePath(
+    "",
+    attr(rootfile, "full-path", "rootfile missing full-path"),
+  );
 }
 
 function readToc(
@@ -399,12 +464,34 @@ function findNcx(
 type OrderedNode = Record<string, unknown>;
 function orderedChildren(node: OrderedNode, name: string): OrderedNode[] {
   const key = Object.keys(node).find((key) => localName(key) === name);
-  return key && Array.isArray(node[key]) ? node[key] as OrderedNode[] : [];
+  return key && Array.isArray(node[key]) ? (node[key] as OrderedNode[]) : [];
 }
 function orderedText(nodes: OrderedNode[]): string {
-  return nodes.map((node) => typeof node["#text"] === "string" ? node["#text"] : Object.keys(node).filter((key) => key !== ":@").map((key) => Array.isArray(node[key]) ? orderedText(node[key] as OrderedNode[]) : "").join("")).join("");
+  return nodes
+    .map((node) =>
+      typeof node["#text"] === "string"
+        ? node["#text"]
+        : Object.keys(node)
+            .filter((key) => key !== ":@")
+            .map((key) =>
+              Array.isArray(node[key])
+                ? orderedText(node[key] as OrderedNode[])
+                : "",
+            )
+            .join(""),
+    )
+    .join("");
 }
-function walkOrdered(nodes: OrderedNode[], cb: (name: string, children: OrderedNode[], attrs: Record<string, string>, depth: number) => void, depth = 0): void {
+function walkOrdered(
+  nodes: OrderedNode[],
+  cb: (
+    name: string,
+    children: OrderedNode[],
+    attrs: Record<string, string>,
+    depth: number,
+  ) => void,
+  depth = 0,
+): void {
   for (const node of nodes) {
     for (const [key, value] of Object.entries(node)) {
       if (!Array.isArray(value)) continue;
@@ -422,33 +509,59 @@ function orderedDocument(data: Uint8Array): OrderedNode[] {
 function parseNav(data: Uint8Array, basename: string): TocEntry[] {
   const navs: Array<{ children: OrderedNode[]; type: string }> = [];
   walkOrdered(orderedDocument(data), (name, children, attrs) => {
-    if (name === "nav") navs.push({ children, type: attrs["@_epub:type"] ?? attrs["@_type"] ?? "" });
+    if (name === "nav")
+      navs.push({
+        children,
+        type: attrs["@_epub:type"] ?? attrs["@_type"] ?? "",
+      });
   });
-  const toc = navs.find((nav) => nav.type.split(/\s+/).includes("toc")) ?? navs[0];
-  if (!toc) throw new InvalidEpubError(`${basename}: nav file has no nav element`);
+  const toc =
+    navs.find((nav) => nav.type.split(/\s+/).includes("toc")) ?? navs[0];
+  if (!toc)
+    throw new InvalidEpubError(`${basename}: nav file has no nav element`);
   const entries: TocEntry[] = [];
   walkOrdered(toc.children, (name, children, _, depth) => {
     if (name !== "li") return;
-    const label = children.find((node) => Object.keys(node).some((key) => ["a", "span"].includes(localName(key))));
+    const label = children.find((node) =>
+      Object.keys(node).some((key) => ["a", "span"].includes(localName(key))),
+    );
     if (!label) return;
-    const title = orderedText(orderedChildren(label, "a").length ? orderedChildren(label, "a") : orderedChildren(label, "span")).trim();
+    const title = orderedText(
+      orderedChildren(label, "a").length
+        ? orderedChildren(label, "a")
+        : orderedChildren(label, "span"),
+    ).trim();
     const attrs = (label[":@"] ?? {}) as Record<string, string>;
-    if (title) entries.push({ title, href: attrs["@_href"] ?? "", ...(depth > 1 ? { depth: depth - 1 } : {}) });
+    if (title)
+      entries.push({
+        title,
+        href: attrs["@_href"] ?? "",
+        ...(depth > 1 ? { depth: depth - 1 } : {}),
+      });
   });
-  if (!entries.some((entry) => entry.href)) throw new InvalidEpubError(`${basename}: nav file has no TOC links`);
+  if (!entries.some((entry) => entry.href))
+    throw new InvalidEpubError(`${basename}: nav file has no TOC links`);
   return entries;
 }
 function parseNcx(data: Uint8Array, basename: string): TocEntry[] {
   const entries: TocEntry[] = [];
   walkOrdered(orderedDocument(data), (name, children, _, depth) => {
     if (name !== "navPoint") return;
-    const label = children.find((node) => orderedChildren(node, "navLabel").length);
-    const content = children.find((node) => Object.keys(node).some((key) => localName(key) === "content"));
-    const title = label ? orderedText(orderedChildren(label, "navLabel")).trim() : "";
+    const label = children.find(
+      (node) => orderedChildren(node, "navLabel").length,
+    );
+    const content = children.find((node) =>
+      Object.keys(node).some((key) => localName(key) === "content"),
+    );
+    const title = label
+      ? orderedText(orderedChildren(label, "navLabel")).trim()
+      : "";
     const href = ((content?.[":@"] ?? {}) as Record<string, string>)["@_src"];
-    if (title && href) entries.push({ title, href, ...(depth > 1 ? { depth: depth - 1 } : {}) });
+    if (title && href)
+      entries.push({ title, href, ...(depth > 1 ? { depth: depth - 1 } : {}) });
   });
-  if (!entries.length) throw new InvalidEpubError(`${basename}: toc.ncx has no navPoint entries`);
+  if (!entries.length)
+    throw new InvalidEpubError(`${basename}: toc.ncx has no navPoint entries`);
   return entries;
 }
 
@@ -501,7 +614,6 @@ function stringAttr(
   const value = node[`@_${name}`];
   return typeof value === "string" ? value : undefined;
 }
-
 
 function localName(key: string): string {
   return key.includes(":") ? key.split(":").pop()! : key;

@@ -6,17 +6,30 @@ import {
   MERGE_MANIFEST_PATH,
   requireMergeManifest,
 } from "./epub-io.js";
-import type { SplitResult, TocEntry, ManifestItem, PackageMetadata, BlobResult, ExecutionOptions } from "./models.js";
+import type {
+  SplitResult,
+  TocEntry,
+  ManifestItem,
+  PackageMetadata,
+  BlobResult,
+  ExecutionOptions,
+} from "./models.js";
 import { archivePath, resolvePath, rewriteReferences } from "./resources.js";
 import { dirnamePosix, safeBasename } from "./utils.js";
 import { createZipOutput, readZip, writeZip, type ZipEntry } from "./zip.js";
 
 export function splitEpub(input: Uint8Array): SplitResult[] {
   const sources = readSources(input);
-  return sources.map((source) => ({ name: safeBasename(String(source.basename)), data: writeZip(splitSourceEntries(input, source)) }));
+  return sources.map((source) => ({
+    name: safeBasename(String(source.basename)),
+    data: writeZip(splitSourceEntries(input, source)),
+  }));
 }
 
-export async function splitEpubFile(input: Blob, execution: ExecutionOptions = {}): Promise<BlobResult[]> {
+export async function splitEpubFile(
+  input: Blob,
+  execution: ExecutionOptions = {},
+): Promise<BlobResult[]> {
   const data = new Uint8Array(await input.arrayBuffer());
   const sources = readSources(data);
   const results: BlobResult[] = [];
@@ -26,15 +39,30 @@ export async function splitEpubFile(input: Blob, execution: ExecutionOptions = {
       execution.signal?.throwIfAborted();
       writer.add(entry);
     }
-    results.push({ name: safeBasename(String(source.basename)), blob: new Blob(writer.finish(), { type: "application/epub+zip" }) });
-    execution.onProgress?.({ phase: "restoring", completed: index + 1, total: sources.length, file: String(source.basename) });
+    results.push({
+      name: safeBasename(String(source.basename)),
+      blob: new Blob(writer.finish(), { type: "application/epub+zip" }),
+    });
+    execution.onProgress?.({
+      phase: "restoring",
+      completed: index + 1,
+      total: sources.length,
+      file: String(source.basename),
+    });
   }
   return results;
 }
 function readSources(input: Uint8Array): Array<Record<string, unknown>> {
-  const manifestData = readZip(input, new Set([MERGE_MANIFEST_PATH])).get(MERGE_MANIFEST_PATH);
-  if (!manifestData) throw new ManifestError("This EPUB has no merge record. Split requires a book merged with this tool.");
-  return requireMergeManifest(manifestData).sources as Array<Record<string, unknown>>;
+  const manifestData = readZip(input, new Set([MERGE_MANIFEST_PATH])).get(
+    MERGE_MANIFEST_PATH,
+  );
+  if (!manifestData)
+    throw new ManifestError(
+      "This EPUB has no merge record. Split requires a book merged with this tool.",
+    );
+  return requireMergeManifest(manifestData).sources as Array<
+    Record<string, unknown>
+  >;
 }
 
 function* splitSourceEntries(
@@ -105,7 +133,11 @@ function* splitSourceEntries(
     yield {
       name: resolvePath(opfDir, originalHref),
       data: restored,
-      level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(String(file.media_type)) ? 0 : 6,
+      level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(
+        String(file.media_type),
+      )
+        ? 0
+        : 6,
     };
   }
 }

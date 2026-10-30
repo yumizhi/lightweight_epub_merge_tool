@@ -1,6 +1,10 @@
 # EPUB Toolkit
 
-A small workspace for your digital library. Merge EPUB volumes, recover individual books, and explore their contents — on your own device.
+Merge EPUB volumes, recover individual books, and inspect their contents on your device.
+
+**[Open EPUB Toolkit](https://yumizhi.github.io/lightweight_epub_merge_tool/)** · [Version notes](CHANGELOG.md) · [How the engine works](docs/architecture.md)
+
+Local processing · No file uploads · Offline availability · Python and Node CLIs
 
 合并 EPUB 分卷、恢复单册、查看书籍结构。支持中英文、明暗主题和离线使用。
 
@@ -18,7 +22,7 @@ The workspace supports drag and drop, automatic volume sorting, manual reorderin
 
 EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, CSS, images, SVG references, and plain fonts, including nested relative paths. Matching binary images and fonts are stored once in a merged book.
 
-**Split reconstructs book content and assets from the merge record.** Package metadata and ZIP serialization are rebuilt. It does not reproduce the original file byte for byte or infer chapter splits for an arbitrary book. The tool targets reflowable EPUBs; encrypted books and obfuscated fonts are not supported.
+**Split reconstructs book content and assets from the merge record.** Package metadata and ZIP serialization are rebuilt. It does not reproduce the original file byte for byte or infer chapter splits for an arbitrary book. The tool targets reflowable EPUBs; encrypted books, obfuscated fonts, fixed-layout packages and media overlays are not supported.
 
 ## Privacy and offline use
 
@@ -46,7 +50,19 @@ npm run preview:web
 
 The **Deploy Web UI to GitHub Pages** workflow is manual. It checks and builds the app at `/lightweight_epub_merge_tool/`, then deploys `dist-web/`. The Worker, icons, manifest, and service worker use this same base path.
 
-To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. The repository's current `github-pages` environment restricts deployments to approved branches. A feature branch must meet those environment rules before it can deploy there. Review and merge the source changes before updating the main site; a separate preview can be hosted independently.
+To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. The repository's current `github-pages` environment restricts deployments to approved branches. A feature branch must meet those environment rules before it can deploy there. Choose an approved branch for the main site. A separate preview can be hosted independently.
+
+## Release artifacts
+
+Version 1.1.0 is prepared in this checkout. The online link serves the latest deployed build.
+
+```sh
+npm run package:node        # dist/epub-toolkit-node-1.1.0.tgz
+python -m pip install build
+python -m build            # dist/*.whl and dist/*.tar.gz
+```
+
+Python users can install the downloaded wheel with `python -m pip install ./lightweight_epub_merge_tool-1.1.0-py3-none-any.whl`. The CLI binaries are `epub-merge` (Python) and `epub-toolkit` (Node). Neither CLI needs a web server. The static web artifact is built for `/lightweight_epub_merge_tool/`; serve it at that path to preserve Worker/PWA URLs.
 
 ## Python CLI
 
@@ -87,7 +103,9 @@ node dist-ts/src/cli.js split collection.epub --out-dir recovered
 node dist-ts/src/cli.js inspect collection.epub
 ```
 
-The core exports `mergeEpubs`, `splitEpub`, `inspectEpub`, `readSourceBook`, and `readBookSummary`. Inputs and outputs use `Uint8Array`; no DOM or browser globals are needed by the core. The Python implementation retains its standard-library-only installation, and interoperability tests cover merge/split in both directions.
+Install the prepared Node package with `npm install -g ./epub-toolkit-node-1.1.0.tgz`, then run `epub-toolkit merge`, `epub-toolkit split`, or `epub-toolkit inspect` with the same arguments shown above. To prepare it locally, run `npm run package:node`.
+
+The core exports `mergeEpubs`, `splitEpub`, `inspectEpub`, `readSourceBook`, and `readBookSummary`. `mergeEpubFiles(name, [{name, file: Blob}], mergeOptions, {onProgress, signal})` and `splitEpubFile(blob, {onProgress, signal})` provide asynchronous Blob inputs/outputs and optional progress/cancellation controls. Both paths share the same resource rules. The existing synchronous APIs use `Uint8Array` and remain available in Node and the browser. The Python implementation retains its standard-library-only installation, and interoperability tests cover merge/split in both directions.
 
 ## Development checks
 
@@ -105,7 +123,7 @@ EPUBCHECK_JAR=/path/to/epubcheck.jar npm test
 
 CI runs this validation for EPUB 2/3 merge and split outputs, plus Python interoperability and browser tests. Inspect provides a structural overview; EPUBCheck provides specification validation.
 
-The manual **Build release packages** workflow produces a wheel, source archive, and static web build as downloadable artifacts. It checks an installation of the built wheel in a fresh virtual environment and does not publish a release or deploy a site.
+The manual **Build release packages** workflow produces a Python wheel, source archive, installable Node tarball, and static web build as downloadable artifacts. It installs both CLIs in clean environments and runs merge, split and inspect. Packaging does not publish a release or deploy a site.
 
 See [architecture and design decisions](docs/architecture.md) for resource mapping, memory use, and task cancellation.
 

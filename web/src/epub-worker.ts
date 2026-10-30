@@ -1,5 +1,9 @@
 import { readBookSummary } from "../../ts/src/epub-io.js";
-import { inspectEpub, mergeEpubFiles, splitEpubFile } from "../../ts/src/index.js";
+import {
+  inspectEpub,
+  mergeEpubFiles,
+  splitEpubFile,
+} from "../../ts/src/index.js";
 import { orderKey } from "../../ts/src/ordering.js";
 import { archiveFiles } from "../../ts/src/zip.js";
 import type {
@@ -12,9 +16,20 @@ import type {
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   let response: WorkerResponse;
-  const onProgress = (progress: import("../../ts/src/models.js").ProcessingProgress) => {
-    if (progress.phase === "resources" && progress.completed % 16 && progress.completed !== progress.total) return;
-    self.postMessage({ type: "progress", progress, requestId: request.requestId } satisfies WorkerReply);
+  const onProgress = (
+    progress: import("../../ts/src/models.js").ProcessingProgress,
+  ) => {
+    if (
+      progress.phase === "resources" &&
+      progress.completed % 16 &&
+      progress.completed !== progress.total
+    )
+      return;
+    self.postMessage({
+      type: "progress",
+      progress,
+      requestId: request.requestId,
+    } satisfies WorkerReply);
   };
   try {
     if (request.type === "analyze") {
@@ -34,7 +49,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     } else if (request.type === "merge") {
       response = {
         type: "merge",
-        ...await mergeEpubFiles(request.outputName, request.files, request.options, { onProgress }),
+        ...(await mergeEpubFiles(
+          request.outputName,
+          request.files,
+          request.options,
+          { onProgress },
+        )),
       };
     } else if (request.type === "inspect") {
       response = {
@@ -48,7 +68,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       };
     } else {
       response = {
-        type: "archive", name: "epub-volumes.zip",
+        type: "archive",
+        name: "epub-volumes.zip",
         blob: await archiveFiles(request.files, onProgress),
       };
     }
@@ -60,7 +81,10 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   }
   // Blob structured cloning shares immutable backing storage. No ArrayBuffer
   // result copy or full output concatenation is needed on the main thread.
-  self.postMessage({ ...response, requestId: request.requestId } satisfies WorkerReply);
+  self.postMessage({
+    ...response,
+    requestId: request.requestId,
+  } satisfies WorkerReply);
 };
 async function readFile(file: WorkerFile) {
   return {

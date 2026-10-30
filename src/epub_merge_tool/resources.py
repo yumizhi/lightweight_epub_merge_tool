@@ -99,9 +99,16 @@ def rewrite_references(data: bytes, media_type: str, rewrite) -> bytes:
         escaped = original if result == value else html.escape(result, quote=True)
         return prefix + delimiter + escaped + delimiter
     def tag(match):
-        if re.match(r"^<!|^<script\b|^</", match[0], re.I):
+        if match[0].startswith("<!"):
             return match[0]
-        return re.sub(r'''(\s([\w:.-]+)\s*=\s*)(["'])([\s\S]*?)\3''', attribute, match[0])
-    text = re.sub(r'''<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?</script\s*>|<[a-z][\w:.-]*(?:[^>"']|"[^"]*"|'[^']*')*>''', tag, data.decode("utf-8"), flags=re.I)
-    text = re.sub(r'''<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<script\b[^>]*>[\s\S]*?</script\s*>|(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(</style\s*>)''', lambda m: m[1] + _css(m[2], rewrite) + m[3] if m[1] else m[0], text, flags=re.I)
+        def rewrite_tag(value):
+            return re.sub(r'''(\s([\w:.-]+)\s*=\s*)(["'])([\s\S]*?)\3''', attribute, value)
+        block = match[1]
+        if not block:
+            return rewrite_tag(match[0])
+        opening = re.match(r'''^<[a-z]+\b(?:[^>"']|"[^"]*"|'[^']*')*>''', match[0], re.I)[0]
+        end = match[0].rfind("</")
+        content = match[0][len(opening):end]
+        return rewrite_tag(opening) + (_css(content, rewrite) if block.lower() == "style" else content) + match[0][end:]
+    text = re.sub(r'''<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?</\1\s*>|<[a-z][\w:.-]*\s+(?:[^>"']|"[^"]*"|'[^']*')*>''', tag, data.decode("utf-8"), flags=re.I)
     return text.encode("utf-8")

@@ -41,31 +41,61 @@ const IMAGE_FONT_TYPES = new Set([
   "application/x-font-truetype",
 ]);
 
-export function mergeEpubs(outputName: string, inputs: InputFile[], options: MergeOptions = {}): MergeResult {
+export function mergeEpubs(
+  outputName: string,
+  inputs: InputFile[],
+  options: MergeOptions = {},
+): MergeResult {
   const output = createZipOutput();
-  const job = mergeEntries(outputName, inputs.map((input) => input.name), options);
+  const job = mergeEntries(
+    outputName,
+    inputs.map((input) => input.name),
+    options,
+  );
   let next = job.next();
   while (!next.done) {
     if (typeof next.value === "number") next = job.next(inputs[next.value]);
-    else { output.add(next.value); next = job.next(); }
+    else {
+      output.add(next.value);
+      next = job.next();
+    }
   }
   return { name: outputName, data: joinChunks(output.finish()) };
 }
 
 // Blob inputs are loaded one at a time, inside the Worker or the caller's runtime.
 // The synchronous API and this entry point consume exactly the same merge plan.
-export async function mergeEpubFiles(outputName: string, inputs: BlobInput[], options: MergeOptions = {}, execution: ExecutionOptions = {}): Promise<BlobResult> {
+export async function mergeEpubFiles(
+  outputName: string,
+  inputs: BlobInput[],
+  options: MergeOptions = {},
+  execution: ExecutionOptions = {},
+): Promise<BlobResult> {
   const output = createZipOutput();
-  const job = mergeEntries(outputName, inputs.map((input) => input.name), options, execution);
+  const job = mergeEntries(
+    outputName,
+    inputs.map((input) => input.name),
+    options,
+    execution,
+  );
   let next = job.next();
   while (!next.done) {
     execution.signal?.throwIfAborted();
     if (typeof next.value === "number") {
       const file = inputs[next.value];
-      next = job.next({ name: file.name, data: new Uint8Array(await file.file.arrayBuffer()) });
-    } else { output.add(next.value); next = job.next(); }
+      next = job.next({
+        name: file.name,
+        data: new Uint8Array(await file.file.arrayBuffer()),
+      });
+    } else {
+      output.add(next.value);
+      next = job.next();
+    }
   }
-  return { name: outputName, blob: new Blob(output.finish(), { type: "application/epub+zip" }) };
+  return {
+    name: outputName,
+    blob: new Blob(output.finish(), { type: "application/epub+zip" }),
+  };
 }
 
 interface PlannedResource {
@@ -77,20 +107,44 @@ interface PlannedResource {
   level: 0 | 6;
 }
 function planSource(source: SourceBook, index: number) {
-  const resources: PlannedResource[] = source.manifestItems.filter((item) => item.mediaType !== "application/x-dtbncx+xml").map((item) => {
-    const sourcePath = resolvePath(source.opfDir, item.href);
-    const targetHref = encodePath(`v${index + 1}/${sourcePath}`);
-    return { item, sourcePath, targetHref, canonicalHref: targetHref, action: "copy", level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(item.mediaType) ? 0 : 6 };
-  });
-  return { resources, paths: new Map(resources.map((resource) => [resource.sourcePath, resource.targetHref])) };
+  const resources: PlannedResource[] = source.manifestItems
+    .filter((item) => item.mediaType !== "application/x-dtbncx+xml")
+    .map((item) => {
+      const sourcePath = resolvePath(source.opfDir, item.href);
+      const targetHref = encodePath(`v${index + 1}/${sourcePath}`);
+      return {
+        item,
+        sourcePath,
+        targetHref,
+        canonicalHref: targetHref,
+        action: "copy",
+        level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(
+          item.mediaType,
+        )
+          ? 0
+          : 6,
+      };
+    });
+  return {
+    resources,
+    paths: new Map(
+      resources.map((resource) => [resource.sourcePath, resource.targetHref]),
+    ),
+  };
 }
 function readResource(input: InputFile, path: string): Uint8Array {
   const data = readZip(input.data, new Set([path])).get(path);
-  if (!data) throw new EpubMergeError(`${input.name}: missing resource ${path}`);
+  if (!data)
+    throw new EpubMergeError(`${input.name}: missing resource ${path}`);
   return data;
 }
 
-function* mergeEntries(outputName: string, names: string[], options: MergeOptions, execution: ExecutionOptions = {}): Generator<ZipEntry | number, void, InputFile | undefined> {
+function* mergeEntries(
+  outputName: string,
+  names: string[],
+  options: MergeOptions,
+  execution: ExecutionOptions = {},
+): Generator<ZipEntry | number, void, InputFile | undefined> {
   const structure = options.structure ?? "volume";
   if (structure !== "volume" && structure !== "flat")
     throw new EpubMergeError("structure must be 'volume' or 'flat'");
@@ -102,12 +156,21 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
   let order = names.map((_, index) => index);
   if (!options.inputOrder) {
     for (const index of order) {
-      execution.onProgress?.({ phase: "reading", completed: index, total: names.length, file: names[index] });
+      execution.onProgress?.({
+        phase: "reading",
+        completed: index,
+        total: names.length,
+        file: names[index],
+      });
       const input = (yield index)!;
       summaries.set(index, readBookSummary(input));
     }
-    const byName = new Map(names.map((name, index) => [safeBasename(name), index]));
-    order = sortSources([...summaries.values()]).map((source) => byName.get(source.basename)!);
+    const byName = new Map(
+      names.map((name, index) => [safeBasename(name), index]),
+    );
+    order = sortSources([...summaries.values()]).map((source) =>
+      byName.get(source.basename)!,
+    );
   }
 
   const title = options.title ?? outputName.replace(/\.epub$/i, "");
@@ -125,22 +188,40 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
   let hasCover = false;
   let language = "en";
   const creators = new Set<string>();
-  const spineProperties: NonNullable<import("./models.js").PackageMetadata["spine"]> = [];
+  const spineProperties: NonNullable<
+    import("./models.js").PackageMetadata["spine"]
+  > = [];
   let pageProgressionDirection: string | undefined;
 
   for (const [sourceIndex, inputIndex] of order.entries()) {
-    execution.onProgress?.({ phase: "reading", completed: sourceIndex, total: order.length, file: names[inputIndex] });
+    execution.onProgress?.({
+      phase: "reading",
+      completed: sourceIndex,
+      total: order.length,
+      file: names[inputIndex],
+    });
     const input = (yield inputIndex)!;
     const source = summaries.get(inputIndex) ?? readBookSummary(input);
     const plan = planSource(source, sourceIndex);
     const hrefMap = plan.paths;
     let completed = 0;
-    const progress = () => execution.onProgress?.({ phase: "resources", completed, total: plan.resources.length, file: source.basename });
+    const progress = () =>
+      execution.onProgress?.({
+        phase: "resources",
+        completed,
+        total: plan.resources.length,
+        file: source.basename,
+      });
     if (sourceIndex === 0) {
       language = source.language;
-      pageProgressionDirection = source.packageMetadata?.pageProgressionDirection;
+      pageProgressionDirection =
+        source.packageMetadata?.pageProgressionDirection;
     }
-    spineProperties.push(...source.spineIds.map((_, index) => source.packageMetadata?.spine?.[index] ?? {}));
+    spineProperties.push(
+      ...source.spineIds.map(
+        (_, index) => source.packageMetadata?.spine?.[index] ?? {},
+      ),
+    );
     for (const creator of source.creators) creators.add(creator);
     const idMap = new Map<string, string>();
     const fileRecords: Record<string, unknown>[] = [];
@@ -157,14 +238,16 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
         finalHref = resourcePool.get(key) ?? finalHref;
         resourcePool.set(key, finalHref);
         resource.canonicalHref = finalHref;
-        resource.action = finalHref === resource.targetHref ? "copy" : "deduplicate";
+        resource.action =
+          finalHref === resource.targetHref ? "copy" : "deduplicate";
         hrefMap.set(resource.sourcePath, resource.canonicalHref);
         const name = `OEBPS/${decodeURIComponent(finalHref)}`;
         if (resource.action !== "deduplicate" && !written.has(name)) {
           written.add(name);
           yield { name, data, level: resource.level };
         }
-        completed++; progress();
+        completed++;
+        progress();
       }
       const newId = `s${sourceIndex}_${item.id}`;
       let ownerId = manifestHrefIds.get(finalHref);
@@ -183,7 +266,9 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
         });
       }
       if (!hasCover && item.properties.includes("cover-image")) {
-        outputItems.find((output) => output.id === ownerId)!.properties.push("cover-image");
+        outputItems
+          .find((output) => output.id === ownerId)!
+          .properties.push("cover-image");
         hasCover = true;
       }
       idMap.set(item.id, ownerId);
@@ -202,14 +287,24 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
       const original = readResource(input, resource.sourcePath);
       const rewriteMap: Record<string, string> = {};
       const data = rewriteReferences(original, item.mediaType, (href) => {
-        const result = remapReference(href, resource.sourcePath, decodeURIComponent(resource.targetHref), hrefMap);
+        const result = remapReference(
+          href,
+          resource.sourcePath,
+          decodeURIComponent(resource.targetHref),
+          hrefMap,
+        );
         if (result !== href) rewriteMap[href] = result;
         return result;
       });
       resource.action = data === original ? "copy" : "rewrite";
       if (Object.keys(rewriteMap).length) rewrites[item.href] = rewriteMap;
-      yield { name: `OEBPS/${decodeURIComponent(resource.targetHref)}`, data: resource.action === "copy" ? original : data, level: resource.level };
-      completed++; progress();
+      yield {
+        name: `OEBPS/${decodeURIComponent(resource.targetHref)}`,
+        data: resource.action === "copy" ? original : data,
+        level: resource.level,
+      };
+      completed++;
+      progress();
     }
 
     for (const id of source.spineIds) spineIds.push(idMap.get(id)!);
@@ -222,13 +317,18 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
         hrefMap,
       ),
     }));
-    if (firstHref === "#") firstHref = remapped.find((entry) => entry.href)?.href ?? "#";
+    if (firstHref === "#")
+      firstHref = remapped.find((entry) => entry.href)?.href ?? "#";
     volumeToc.push({
       title: source.title,
       href: remapped.find((entry) => entry.href)?.href ?? "#",
       entries: remapped,
     });
-    flatToc.push(...remapped.map((entry) => ({ ...entry, depth: 0 })));
+    flatToc.push(
+      ...remapped
+        .filter((entry) => entry.href)
+        .map((entry) => ({ ...entry, depth: 0 })),
+    );
     manifestSources.push({
       basename: source.basename,
       title: source.title,
@@ -243,7 +343,11 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
     });
   }
 
-  execution.onProgress?.({ phase: "writing", completed: order.length, total: order.length });
+  execution.onProgress?.({
+    phase: "writing",
+    completed: order.length,
+    total: order.length,
+  });
   yield {
     name: "OEBPS/nav-merged.xhtml",
     data:
@@ -253,7 +357,15 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
   };
   yield {
     name: "OEBPS/content.opf",
-    data: buildOpf(title, language, [...creators], outputItems, spineIds, "nav-merged.xhtml", { spine: spineProperties, pageProgressionDirection }),
+    data: buildOpf(
+      title,
+      language,
+      [...creators],
+      outputItems,
+      spineIds,
+      "nav-merged.xhtml",
+      { spine: spineProperties, pageProgressionDirection },
+    ),
   };
   yield {
     name: MERGE_MANIFEST_PATH,

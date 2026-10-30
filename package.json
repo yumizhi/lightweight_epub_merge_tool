@@ -1,6 +1,6 @@
 {
   "name": "lightweight-epub-merge-tool-ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,8 @@
     "check:web": "tsc -p web/tsconfig.json --noEmit",
     "build:web:pages": "vite build --config web/vite.config.ts --base=/lightweight_epub_merge_tool/",
     "preview:web": "vite preview --config web/vite.config.ts",
-    "test:e2e": "npm run build:web:pages && playwright test"
+    "test:e2e": "npm run build:web:pages && playwright test",
+    "package:node": "npm run build:ts && node scripts/package-node.mjs"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.4.1",

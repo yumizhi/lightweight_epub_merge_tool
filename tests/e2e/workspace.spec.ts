@@ -238,7 +238,9 @@ test("animates file reordering and select menus", async ({ page }) => {
   ).toBeLessThan(0.01);
 });
 
-test("reports real Worker stages, cancels processing and starts a fresh task", async ({ page }) => {
+test("reports real Worker stages, cancels processing and starts a fresh task", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     const OriginalWorker = window.Worker;
     (window as any).workerProgress = [];
@@ -246,60 +248,156 @@ test("reports real Worker stages, cancels processing and starts a fresh task", a
       constructor(url: string | URL, options?: WorkerOptions) {
         super(url, options);
         this.addEventListener("message", ({ data }) => {
-          if (data.type === "progress") (window as any).workerProgress.push(data.progress);
+          if (data.type === "progress")
+            (window as any).workerProgress.push(data.progress);
         });
       }
     };
   });
   const large = readZip(fixture());
-  large.set("OEBPS/Text/chapter.xhtml", new TextEncoder().encode(new TextDecoder().decode(large.get("OEBPS/Text/chapter.xhtml")).replace("</body>", "<p>Generated text for cancellation. </p>".repeat(24000) + "</body>")));
-  const data = Buffer.from(writeZip([...large].map(([name,data])=>({name,data,level:name==='mimetype'?0:6}))));
+  large.set(
+    "OEBPS/Text/chapter.xhtml",
+    new TextEncoder().encode(
+      new TextDecoder()
+        .decode(large.get("OEBPS/Text/chapter.xhtml"))
+        .replace(
+          "</body>",
+          "<p>Generated text for cancellation. </p>".repeat(24000) + "</body>",
+        ),
+    ),
+  );
+  const data = Buffer.from(
+    writeZip(
+      [...large].map(([name, data]) => ({
+        name,
+        data,
+        level: name === "mimetype" ? 0 : 6,
+      })),
+    ),
+  );
   await page.goto("./");
-  await page.getByLabel("Choose files", { exact: true }).setInputFiles(Array.from({length:24},(_,i)=>({name:`volume-${i+1}.epub`,mimeType:"application/epub+zip",buffer:data})));
-  await expect(page.getByRole("button",{name:"Merge books"})).toBeEnabled();
-  await page.getByRole("button",{name:"Merge books"}).click();
-  await expect.poll(()=>page.evaluate(()=>(window as any).workerProgress.some((p:any)=>p.phase==='resources'))).toBe(true);
-  await page.getByRole("button",{name:"Cancel",exact:true}).click();
+  await page
+    .getByLabel("Choose files", { exact: true })
+    .setInputFiles(
+      Array.from({ length: 24 }, (_, i) => ({
+        name: `volume-${i + 1}.epub`,
+        mimeType: "application/epub+zip",
+        buffer: data,
+      })),
+    );
+  await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
+  await page.getByRole("button", { name: "Merge books" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).workerProgress.some(
+          (p: any) => p.phase === "resources",
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".task-status")).toHaveCount(0);
-  await expect(page.getByRole("button",{name:"Download",exact:true})).toHaveCount(0);
-  await page.getByRole("button",{name:"Clear all"}).click();
-  await page.getByLabel("Choose files",{exact:true}).setInputFiles(upload(1));
-  await expect(page.getByRole("button",{name:"Merge books"})).toBeEnabled();
-  await page.getByRole("button",{name:"Merge books"}).click();
-  await expect(page.getByRole("button",{name:"Download",exact:true})).toBeVisible();
-  const progress=await page.evaluate(()=>(window as any).workerProgress);
-  expect(progress.some((p:any)=>p.phase==='writing')).toBe(true);
-  expect(progress.every((p:any)=>Number.isInteger(p.completed)&&p.completed<=p.total)).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Download", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear all" }).click();
+  await page
+    .getByLabel("Choose files", { exact: true })
+    .setInputFiles(upload(1));
+  await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
+  await page.getByRole("button", { name: "Merge books" }).click();
+  await expect(
+    page.getByRole("button", { name: "Download", exact: true }),
+  ).toBeVisible();
+  const progress = await page.evaluate(() => (window as any).workerProgress);
+  expect(progress.some((p: any) => p.phase === "writing")).toBe(true);
+  expect(
+    progress.every(
+      (p: any) => Number.isInteger(p.completed) && p.completed <= p.total,
+    ),
+  ).toBe(true);
 });
 
-test("releases download URLs and clears stale results on edits and failures", async ({ page }) => {
+test("releases download URLs and clears stale results on edits and failures", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
-    (window as any).urls = {created:[],revoked:[]};
-    const create=URL.createObjectURL.bind(URL), revoke=URL.revokeObjectURL.bind(URL);
-    URL.createObjectURL = (blob) => {const url=create(blob);(window as any).urls.created.push(url);return url;};
-    URL.revokeObjectURL = (url) => {(window as any).urls.revoked.push(url);revoke(url);};
+    (window as any).urls = { created: [], revoked: [] };
+    const create = URL.createObjectURL.bind(URL),
+      revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      const url = create(blob);
+      (window as any).urls.created.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      (window as any).urls.revoked.push(url);
+      revoke(url);
+    };
   });
   await page.goto("./");
-  await page.getByRole("tab",{name:"Merge",exact:true}).focus();
+  await page.getByRole("tab", { name: "Merge", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("tab",{name:"Split",exact:true})).toHaveAttribute("data-state","active");
-  await expect(page.getByRole("tab",{name:"Split",exact:true})).toBeFocused();
+  await expect(
+    page.getByRole("tab", { name: "Split", exact: true }),
+  ).toHaveAttribute("data-state", "active");
+  await expect(
+    page.getByRole("tab", { name: "Split", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByRole("tab",{name:"Merge",exact:true})).toHaveAttribute("data-state","active");
-  await expect(page.getByRole("tab",{name:"Merge",exact:true})).toBeFocused();
-  await page.getByLabel("Choose files",{exact:true}).setInputFiles(upload(1));
-  await expect(page.getByRole("button",{name:"Merge books"})).toBeEnabled();
-  await page.getByRole("button",{name:"Merge books"}).click();
-  await expect(page.getByRole("button",{name:"Download",exact:true})).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Merge", exact: true }),
+  ).toHaveAttribute("data-state", "active");
+  await expect(
+    page.getByRole("tab", { name: "Merge", exact: true }),
+  ).toBeFocused();
+  await page
+    .getByLabel("Choose files", { exact: true })
+    .setInputFiles(upload(1));
+  await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
+  await page.getByRole("button", { name: "Merge books" }).click();
+  await expect(
+    page.getByRole("button", { name: "Download", exact: true }),
+  ).toBeVisible();
   await page.getByLabel("Collection title").fill("Updated collection");
-  await expect(page.getByRole("button",{name:"Download",exact:true})).toHaveCount(0);
-  await expect.poll(()=>page.evaluate(()=>(window as any).urls.created.every((url:string)=>(window as any).urls.revoked.includes(url)))).toBe(true);
-  await page.getByRole("button",{name:"Clear all"}).click();
-  const zip=readZip(fixture());
-  zip.set("OEBPS/Text/chapter.xhtml",new TextEncoder().encode(new TextDecoder().decode(zip.get("OEBPS/Text/chapter.xhtml")).replace("../Images/pixel.png","../Images/absent.png")));
-  await page.getByLabel("Choose files",{exact:true}).setInputFiles({name:"volume-bad.epub",mimeType:"application/epub+zip",buffer:Buffer.from(writeZip([...zip].map(([name,data])=>({name,data}))))});
-  await expect(page.getByRole("button",{name:"Merge books"})).toBeEnabled();
-  await page.getByRole("button",{name:"Merge books"}).click();
+  await expect(
+    page.getByRole("button", { name: "Download", exact: true }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).urls.created.length > 0 &&
+          (window as any).urls.created.every((url: string) =>
+            (window as any).urls.revoked.includes(url),
+          ),
+      ),
+    )
+    .toBe(true);
+  await page.getByRole("button", { name: "Clear all" }).click();
+  const zip = readZip(fixture());
+  zip.set(
+    "OEBPS/Text/chapter.xhtml",
+    new TextEncoder().encode(
+      new TextDecoder()
+        .decode(zip.get("OEBPS/Text/chapter.xhtml"))
+        .replace("../Images/pixel.png", "../Images/absent.png"),
+    ),
+  );
+  await page
+    .getByLabel("Choose files", { exact: true })
+    .setInputFiles({
+      name: "volume-bad.epub",
+      mimeType: "application/epub+zip",
+      buffer: Buffer.from(
+        writeZip([...zip].map(([name, data]) => ({ name, data }))),
+      ),
+    });
+  await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
+  await page.getByRole("button", { name: "Merge books" }).click();
   await expect(page.getByRole("alert")).toContainText("absent.png");
-  await expect(page.getByRole("button",{name:"Download",exact:true})).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Download", exact: true }),
+  ).toHaveCount(0);
 });

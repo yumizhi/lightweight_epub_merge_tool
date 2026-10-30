@@ -62,6 +62,10 @@ def read_source_book(path: Path) -> SourceBook:
             manifest = _required(opf_root.find("opf:manifest", NS), f"{basename}: missing manifest")
             spine = _required(opf_root.find("opf:spine", NS), f"{basename}: missing spine")
 
+            if any(node.get("property") == "rendition:layout" and _text(node) == "pre-paginated" for node in opf_root.findall(".//opf:meta", NS)):
+                raise InvalidEpubError(f"{basename}: fixed-layout EPUBs are not supported")
+            if any(node.get("media-overlay") for node in manifest.findall("opf:item", NS)):
+                raise InvalidEpubError(f"{basename}: EPUB media overlays are not supported")
             title = _text(opf_root.find(".//dc:title", NS)) or path.stem
             language = _text(opf_root.find(".//dc:language", NS)) or "en"
             creators = tuple(

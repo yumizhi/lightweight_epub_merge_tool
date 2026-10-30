@@ -31,9 +31,13 @@ export function createZipOutput() {
   const names = new Set<string>();
   return {
     add(entry: ZipEntry) {
-      if (names.has(entry.name)) throw new Error(`Duplicate ZIP entry: ${entry.name}`);
+      if (names.has(entry.name))
+        throw new Error(`Duplicate ZIP entry: ${entry.name}`);
       names.add(entry.name);
-      const stream = entry.level === 0 ? new ZipPassThrough(entry.name) : new ZipDeflate(entry.name, { level: entry.level ?? 6 });
+      const stream =
+        entry.level === 0
+          ? new ZipPassThrough(entry.name)
+          : new ZipDeflate(entry.name, { level: entry.level ?? 6 });
       zip.add(stream);
       stream.push(entry.data, true);
       if (error) throw error;
@@ -46,9 +50,14 @@ export function createZipOutput() {
   };
 }
 export function joinChunks(chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
-  const output = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
+  const output = new Uint8Array(
+    chunks.reduce((size, chunk) => size + chunk.length, 0),
+  );
   let offset = 0;
-  for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
   return output;
 }
 export function writeZip(entries: Iterable<ZipEntry>): Uint8Array {
@@ -57,23 +66,34 @@ export function writeZip(entries: Iterable<ZipEntry>): Uint8Array {
   return joinChunks(writer.finish());
 }
 
-export function zipIndex(data: Uint8Array): Map<string, { size: number; compression: number }> {
-  const entries = new Map<string, { size: number; compression: number }>();
-  unzipSync(data, { filter: (entry) => {
-    entries.set(entry.name, { size: entry.originalSize, compression: entry.compression });
-    return false;
-  }});
-  return entries;
-}
 export function zipNames(data: Uint8Array): Set<string> {
-  return new Set(zipIndex(data).keys());
+  const names = new Set<string>();
+  unzipSync(data, {
+    filter: (entry) => {
+      names.add(entry.name);
+      return false;
+    },
+  });
+  return names;
 }
 
-export async function archiveFiles(files: import("./models.js").BlobInput[], onProgress?: (progress: import("./models.js").ProcessingProgress) => void): Promise<Blob> {
+export async function archiveFiles(
+  files: import("./models.js").BlobInput[],
+  onProgress?: (progress: import("./models.js").ProcessingProgress) => void,
+): Promise<Blob> {
   const writer = createZipOutput();
   for (const [index, file] of files.entries()) {
-    writer.add({ name: file.name, data: new Uint8Array(await file.file.arrayBuffer()), level: 0 });
-    onProgress?.({ phase: "packing", completed: index + 1, total: files.length, file: file.name });
+    writer.add({
+      name: file.name,
+      data: new Uint8Array(await file.file.arrayBuffer()),
+      level: 0,
+    });
+    onProgress?.({
+      phase: "packing",
+      completed: index + 1,
+      total: files.length,
+      file: file.name,
+    });
   }
   return new Blob(writer.finish(), { type: "application/zip" });
 }
