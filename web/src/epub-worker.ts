@@ -1,93 +1,39 @@
 import { readSourceBook } from "../../ts/src/epub-io.js";
 import { inspectEpub, mergeEpubs, splitEpub } from "../../ts/src/index.js";
 import { orderKey } from "../../ts/src/ordering.js";
-import type { InputFile, MergeOptions } from "../../ts/src/models.js";
+import { writeZip } from "../../ts/src/zip.js";
+import type { WorkerFile, WorkerReply, WorkerRequest, WorkerResponse } from "./worker-protocol";
 
-interface WorkerFile {
-  id?: string;
-  name: string;
-  file?: File;
-  data?: Uint8Array;
-}
-
-type WorkerRequest =
-  | { requestId: number; type: "analyze"; file: WorkerFile }
-  | { requestId: number; type: "merge"; outputName: string; files: WorkerFile[]; options: MergeOptions }
-  | { requestId: number; type: "inspect"; file: WorkerFile }
-  | { requestId: number; type: "split"; file: WorkerFile };
-
-type WorkerResponse =
-  | { requestId: number; type: "analyze"; id?: string; title: string; chapters: number; orderKey?: number[]; warning?: string }
-  | { requestId: number; type: "merge"; name: string; data: Uint8Array }
-  | { requestId: number; type: "inspect"; report: unknown }
-  | { requestId: number; type: "split"; results: Array<{ name: string; data: Uint8Array }> }
-  | { requestId: number; type: "error"; message: string };
-
-self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  void handleMessage(event.data);
-};
-
-async function handleMessage(request: WorkerRequest): Promise<void> {
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+  const request = event.data;
   let response: WorkerResponse;
   try {
-    response = await handleRequest(request);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    response = { requestId: request.requestId, type: "error", message };
-  }
-  postResponse(response);
-}
-
-async function handleRequest(request: WorkerRequest): Promise<WorkerResponse> {
-  if (request.type === "analyze") {
-    const input = await readWorkerFile(request.file);
-    const source = readSourceBook(input);
-    let key: number[] | undefined;
-    let warning: string | undefined;
-    try {
-      key = orderKey(source);
-    } catch (error) {
-      warning = error instanceof Error ? error.message : String(error);
+    if (request.type === "analyze") {
+      const source = readSourceBook(await readFile(request.file));
+      let key: number[] | undefined;
+      try { key = orderKey(source); } catch { /* Manual ordering remains available. */ }
+      response = { type: "analyze", title: source.title, chapters: source.spineIds.length, orderKey: key };
+    } else if (request.type === "merge") {
+      const inputs = [];
+      for (const file of request.files) inputs.push(await readFile(file));
+      response = { type: "merge", ...mergeEpubs(request.outputName, inputs, request.options) };
+    } else if (request.type === "inspect") {
+      response = { type: "inspect", report: inspectEpub((await readFile(request.file)).data) };
+    } else if (request.type === "split") {
+      response = { type: "split", results: splitEpub((await readFile(request.file)).data) };
+    } else {
+      const entries = [];
+      for (const file of request.files) entries.push({ ...await readFile(file), level: 0 as const });
+      response = { type: "archive", name: "epub-volumes.zip", data: writeZip(entries) };
     }
-    return {
-      requestId: request.requestId,
-      type: "analyze",
-      id: request.file.id,
-      title: source.title,
-      chapters: source.toc.length,
-      orderKey: key,
-      warning
-    };
+  } catch (error) {
+    response = { type: "error", message: error instanceof Error ? error.message : String(error) };
   }
-  if (request.type === "merge") {
-    const files = await Promise.all(request.files.map(readWorkerFile));
-    const result = mergeEpubs(request.outputName, files, request.options);
-    return { requestId: request.requestId, type: "merge", name: result.name, data: result.data };
-  }
-  if (request.type === "inspect") {
-    const input = await readWorkerFile(request.file);
-    return { requestId: request.requestId, type: "inspect", report: inspectEpub(input.data) };
-  }
-  const input = await readWorkerFile(request.file);
-  const results = splitEpub(input.data);
-  return { requestId: request.requestId, type: "split", results };
-}
-
-async function readWorkerFile(file: WorkerFile): Promise<InputFile> {
-  if (file.data) return { name: file.name, data: file.data };
-  if (file.file) return { name: file.name, data: new Uint8Array(await file.file.arrayBuffer()) };
-  throw new Error(`${file.name}: missing file data`);
-}
-
-function postResponse(response: WorkerResponse): void {
-  const transferables: Transferable[] = [];
-  if (response.type === "merge") addTransferableBuffer(response.data, transferables);
-  if (response.type === "split") {
-    for (const result of response.results) addTransferableBuffer(result.data, transferables);
-  }
-  self.postMessage(response, transferables);
-}
-
-function addTransferableBuffer(data: Uint8Array, transferables: Transferable[]): void {
-  if (data.buffer instanceof ArrayBuffer) transferables.push(data.buffer);
+  const buffers: Transferable[] = [];
+  if (response.type === "merge" || response.type === "archive") buffers.push(response.data.buffer as ArrayBuffer);
+  if (response.type === "split") for (const file of response.results) buffers.push(file.data.buffer as ArrayBuffer);
+  self.postMessage({ ...response, requestId: request.requestId } satisfies WorkerReply, { transfer: buffers });
+};
+async function readFile(file: WorkerFile) {
+  return { name: file.name, data: new Uint8Array(await file.file.arrayBuffer()) };
 }

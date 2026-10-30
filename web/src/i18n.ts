@@ -1,0 +1,36 @@
+export type Language = "en" | "zh";
+export const COPY = {
+  en: {
+    tagline: "A little order for your digital library.",
+    intro: "Bring your books together.",
+    description: "Merge volumes, recover individual books, and look inside your EPUBs. Right here, on your device.",
+    merge: "Merge", split: "Split", inspect: "Inspect",
+    mergeHint: "Combine a series into one well-organized book.",
+    splitHint: "Recover volumes from a book merged with this tool.",
+    inspectHint: "Explore metadata, reading order, and the table of contents.",
+    drop: "Drop your EPUBs here", dropOne: "Drop an EPUB here", browse: "Choose files", browseOne: "Choose a file",
+    dropHint: ".epub files · processed on your device", add: "Add books", source: "Source book", queue: "Your books", empty: "Your next great collection starts here.",
+    queueHint: "Use the arrows to arrange your reading order.", auto: "Auto sort", clear: "Clear all", remove: "Remove", up: "Move up", down: "Move down",
+    settings: "Make it yours", bookTitle: "Collection title", outputName: "Output filename", structure: "Table of contents", volume: "Grouped by volume", flat: "One chapter list",
+    volumeHint: "Keep each book as a section, with its chapters underneath.", flatHint: "Put all chapters in one continuous list.",
+    mergeAction: "Merge books", splitAction: "Split into books", inspectAction: "Inspect book", cancel: "Cancel", working: "Processing your book…", reading: "Reading metadata…", ready: "Ready", failed: "Could not read this book", completed: "All done", cancelled: "Task cancelled", download: "Download", downloadAll: "Download all (.zip)", results: "Ready to take with you", downloadStarted: "Download started", error: "Something needs your attention",
+    privacy: "Your books stay yours.", privacyHint: "Files are processed locally. Nothing is uploaded or saved after you leave.", offline: "Works offline after your first visit", openSource: "Open source", guide: "About this tool", language: "Switch to Chinese", theme: "Toggle theme", chapters: "chapters", books: "books", manual: "Reading order follows this list.", autoDone: "Books sorted by volume number", autoError: "These books have no clear volume order. Arrange them with the arrows.", unsupported: "Choose files with the .epub extension.", single: "Choose one EPUB for this operation.", splitNote: "Split works with EPUBs created by this tool. It reconstructs the source volumes, including their chapters and assets.", inspectNote: "A structural overview of this EPUB. Use EPUBCheck for full specification validation.", metadata: "Book details", title: "Title", creators: "Author", languageLabel: "Language", package: "Package", toc: "Contents", spine: "Reading order", resources: "resources", sources: "Original volumes", noCreator: "Not specified", issue: "Issues", noIssues: "Package and reading order parsed successfully.", footer: "Built for books. Designed to stay local.", install: "Install app", update: "An update is ready", reload: "Update now", sortWarning: "Auto sort unavailable", notSplittable: "This EPUB has no merge record. Choose a book merged with this tool.", saved: "Appearance and language are remembered on this device.", downloaded: "Output files", retry: "Try again"
+  },
+  zh: {
+    tagline: "让你的数字书架，井然有序。",
+    intro: "把好书，放在一起。",
+    description: "合并分卷、恢复单册、查看 EPUB 结构。所有操作，都在你的设备上完成。",
+    merge: "合并", split: "拆分", inspect: "检查",
+    mergeHint: "把整套作品合成一本，保留清晰的章节目录。",
+    splitHint: "将本工具合并的 EPUB 恢复为独立分卷。",
+    inspectHint: "查看书籍信息、阅读顺序和章节目录。",
+    drop: "把 EPUB 文件拖到这里", dropOne: "把 EPUB 文件拖到这里", browse: "选择文件", browseOne: "选择文件",
+    dropHint: ".epub 文件 · 在你的设备上处理", add: "添加书籍", source: "来源书籍", queue: "待处理书籍", empty: "从几本好书开始，整理你的下一套合集。",
+    queueHint: "使用箭头调整阅读顺序。", auto: "自动排序", clear: "清空", remove: "移除", up: "上移", down: "下移",
+    settings: "合集设置", bookTitle: "合集书名", outputName: "输出文件名", structure: "目录结构", volume: "按分卷组织", flat: "连续章节列表",
+    volumeHint: "每册作为独立分卷，下方保留章节目录。", flatHint: "将所有分卷的章节排列在同一层级。",
+    mergeAction: "合并书籍", splitAction: "拆分为单册", inspectAction: "检查书籍", cancel: "取消", working: "正在处理书籍…", reading: "正在读取书籍信息…", ready: "就绪", failed: "无法读取这本书", completed: "处理完成", cancelled: "任务已取消", download: "下载", downloadAll: "打包下载 (.zip)", results: "文件已准备好", downloadStarted: "下载已开始", error: "请检查以下问题",
+    privacy: "你的书，留在你的设备上。", privacyHint: "文件在本地处理。关闭页面后，不保留书籍内容。", offline: "首次访问后可离线使用", openSource: "开源项目", guide: "使用说明", language: "Switch to English", theme: "切换主题", chapters: "章", books: "本", manual: "按列表顺序合并。", autoDone: "已按卷号排序", autoError: "无法确定分卷顺序，请使用箭头调整。", unsupported: "请选择 .epub 格式的文件。", single: "此操作一次处理一本 EPUB。", splitNote: "支持拆分本工具生成的合集，恢复各分卷的章节和资源。", inspectNote: "此处展示 EPUB 的结构信息。完整规范校验请使用 EPUBCheck。", metadata: "书籍信息", title: "书名", creators: "作者", languageLabel: "语言", package: "书籍结构文件", toc: "章节目录", spine: "阅读顺序", resources: "项资源", sources: "原始分卷", noCreator: "未提供", issue: "检查发现", noIssues: "书籍结构与阅读顺序解析成功。", footer: "为阅读整理，让文件留在本地。", install: "安装应用", update: "新版本已就绪", reload: "立即更新", sortWarning: "无法自动排序", notSplittable: "这本 EPUB 没有合并记录，请选择本工具合并生成的文件。", saved: "此设备会记住语言和主题偏好。", downloaded: "输出文件", retry: "重试"
+  }
+};
+export type Copy = typeof COPY.en;
