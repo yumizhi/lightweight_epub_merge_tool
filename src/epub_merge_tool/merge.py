@@ -5,6 +5,7 @@ import json
 import posixpath
 import zipfile
 from pathlib import Path
+from urllib.parse import quote, unquote
 
 from . import __version__
 from .epub_io import (
@@ -20,6 +21,7 @@ from .epub_io import (
 from .errors import EpubMergeError
 from .models import ManifestItem, SourceBook, TocEntry
 from .ordering import sort_sources
+from .resources import resolve_path, remap_reference, rewrite_references
 
 
 IMAGE_OR_FONT_TYPES = {
@@ -53,8 +55,6 @@ def merge_epubs(
     _reject_duplicate_basenames(sources)
     if not input_order:
         sources = sort_sources(sources)
-    if structure == "flat":
-        _reject_duplicate_flat_titles(sources)
 
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -70,28 +70,29 @@ def merge_epubs(
     source_tocs: list[tuple[str, str, list[TocEntry]]] = []
     flat_toc: list[TocEntry] = []
     first_href = "#"
+    has_cover = False
 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as out:
         write_mimetype_first(out)
         write_epub_container(out)
 
         for source_index, source in enumerate(sources):
-            prefix = "" if source_index == 0 else f"v{source_index}/"
+            prefix = f"v{source_index + 1}/"
             href_map: dict[str, str] = {}
             id_map: dict[str, str] = {}
             file_records: list[dict] = []
             rewrites: dict[str, dict[str, str]] = {}
 
             for item in source.manifest_items:
-                if "nav" in item.properties:
+                if item.media_type == "application/x-dtbncx+xml":
                     continue
                 data = source.item_data[item.href]
-                preferred_href = f"{prefix}{item.href}"
+                preferred_href = quote(f"{prefix}{resolve_path(source.opf_dir, item.href)}", safe="/")
                 output_href = preferred_href
                 if _can_pool(item.media_type):
                     digest = hashlib.sha256(data).hexdigest()
                     output_href = resource_pool.setdefault((item.media_type.lower(), digest), preferred_href)
-                href_map[item.href] = output_href
+                href_map[resolve_path(source.opf_dir, item.href)] = output_href
                 new_id = f"s{source_index}_{item.item_id}"
                 owner_id = manifest_href_ids.get(output_href)
                 if owner_id is None:
@@ -102,9 +103,11 @@ def merge_epubs(
                             item_id=new_id,
                             href=output_href,
                             media_type=item.media_type,
-                            properties=tuple(prop for prop in item.properties if prop != "nav"),
+                            properties=tuple(prop for prop in item.properties if prop != "nav" and (prop != "cover-image" or not has_cover)),
                         )
                     )
+                if "cover-image" in item.properties:
+                    has_cover = True
                 id_map[item.item_id] = owner_id
                 file_records.append(
                     {
@@ -117,15 +120,21 @@ def merge_epubs(
                 )
 
             for item in source.manifest_items:
-                if "nav" in item.properties:
+                if item.media_type == "application/x-dtbncx+xml":
                     continue
                 data = source.item_data[item.href]
-                rewrite_map = _rewrite_map_for_item(item, prefix, href_map)
+                source_path = resolve_path(source.opf_dir, item.href)
+                output_href = href_map[source_path]
+                rewrite_map = {}
+                def rewrite(href):
+                    result = remap_reference(href, source_path, unquote(output_href), href_map)
+                    if result != href:
+                        rewrite_map[href] = result
+                    return result
+                data = rewrite_references(data, item.media_type, rewrite)
                 if rewrite_map:
-                    data = _rewrite_refs(data, rewrite_map)
                     rewrites[item.href] = rewrite_map
-                output_href = href_map[item.href]
-                zip_name = f"OEBPS/{output_href}"
+                zip_name = f"OEBPS/{unquote(output_href)}"
                 if zip_name not in zip_written:
                     out.writestr(zip_name, data, compress_type=zipfile.ZIP_DEFLATED)
                     zip_written.add(zip_name)
@@ -134,13 +143,13 @@ def merge_epubs(
                 spine_ids.append(id_map[item_id])
 
             remapped_toc = [
-                TocEntry(entry.title, _remap_toc_href(entry.href, href_map)) for entry in source.toc
+                TocEntry(entry.title, remap_reference(entry.href, source.opf_path, "nav-merged.xhtml", href_map), entry.depth) for entry in source.toc
             ]
             if first_href == "#" and remapped_toc:
                 first_href = remapped_toc[0].href
             source_href = remapped_toc[0].href if remapped_toc else "#"
             source_tocs.append((source.title, source_href, remapped_toc))
-            flat_toc.extend(remapped_toc)
+            flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc)
             manifest_sources.append(
                 {
                     "basename": source.basename,
@@ -151,7 +160,7 @@ def merge_epubs(
                     "opf_path": source.opf_path,
                     "files": file_records,
                     "spine": list(source.spine_ids),
-                    "toc": [{"title": entry.title, "href": entry.href} for entry in source.toc],
+                    "toc": [{"title": entry.title, "href": entry.href, "depth": entry.depth} for entry in source.toc],
                     "rewrites": rewrites,
                 }
             )
@@ -163,7 +172,7 @@ def merge_epubs(
         out.writestr("OEBPS/nav-merged.xhtml", nav, compress_type=zipfile.ZIP_DEFLATED)
         out.writestr(
             "OEBPS/content.opf",
-            build_opf(book_title, language, (), manifest_items, spine_ids),
+            build_opf(book_title, language, dict.fromkeys(creator for source in sources for creator in source.creators), manifest_items, spine_ids),
             compress_type=zipfile.ZIP_DEFLATED,
         )
         manifest = {
@@ -191,50 +200,6 @@ def _reject_duplicate_basenames(sources: list[SourceBook]) -> None:
         seen.add(basename)
 
 
-def _reject_duplicate_flat_titles(sources: list[SourceBook]) -> None:
-    seen: dict[str, str] = {}
-    for source in sources:
-        for entry in source.toc:
-            key = entry.title.strip()
-            if key in seen:
-                raise EpubMergeError(
-                    f"Duplicate flat chapter title {entry.title!r} in {source.basename} and {seen[key]}"
-                )
-            seen[key] = source.basename
-
-
 def _can_pool(media_type: str) -> bool:
     normalized = media_type.lower()
-    return normalized.startswith("image/") or normalized in IMAGE_OR_FONT_TYPES
-
-
-def _rewrite_map_for_item(item: ManifestItem, prefix: str, href_map: dict[str, str]) -> dict[str, str]:
-    if not item.media_type.lower().endswith("xhtml+xml"):
-        return {}
-    mapping: dict[str, str] = {}
-    chapter_dir = posixpath.dirname(f"{prefix}{item.href}")
-    for original_href, final_href in href_map.items():
-        preferred_href = f"{prefix}{original_href}"
-        if final_href == preferred_href:
-            continue
-        relative = posixpath.relpath(final_href, chapter_dir or ".")
-        mapping[original_href] = relative
-    return mapping
-
-
-def _rewrite_refs(data: bytes, mapping: dict[str, str]) -> bytes:
-    text = data.decode("utf-8")
-    for old, new in mapping.items():
-        text = text.replace(f'src="{old}"', f'src="{new}"')
-        text = text.replace(f"src='{old}'", f"src='{new}'")
-        text = text.replace(f'href="{old}"', f'href="{new}"')
-        text = text.replace(f"href='{old}'", f"href='{new}'")
-    return text.encode("utf-8")
-
-
-def _remap_toc_href(href: str, href_map: dict[str, str]) -> str:
-    base, sep, fragment = href.partition("#")
-    mapped = href_map.get(base)
-    if mapped is None:
-        raise EpubMergeError(f"TOC href {href!r} does not reference a copied manifest item")
-    return f"{mapped}{sep}{fragment}" if sep else mapped
+    return (normalized.startswith("image/") and normalized != "image/svg+xml") or normalized in IMAGE_OR_FONT_TYPES

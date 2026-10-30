@@ -1,6 +1,7 @@
 export interface TocEntry {
   title: string;
   href: string;
+  depth?: number;
 }
 
 export interface ManifestItem {
@@ -11,6 +12,7 @@ export interface ManifestItem {
 }
 
 export interface SourceBook {
+  version: string;
   basename: string;
   sha256: string;
   opfPath: string;

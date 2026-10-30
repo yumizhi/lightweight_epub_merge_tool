@@ -8,6 +8,7 @@ from pathlib import Path
 class TocEntry:
     title: str
     href: str
+    depth: int = 0
 
 
 @dataclass(frozen=True)

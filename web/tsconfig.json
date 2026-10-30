@@ -4,7 +4,18 @@
     "rootDir": "..",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "react", "react-dom"]
+    "types": ["vite/client", "react", "react-dom", "vite-plugin-pwa/client"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "../ts/src/**/*.ts", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../ts/src/**/*.ts",
+    "vite.config.ts"
+  ]
 }

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
+from datetime import datetime, timezone
+from urllib.parse import quote
 import mimetypes
 import posixpath
 import zipfile
@@ -10,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 from .errors import InvalidEpubError, ManifestError
 from .models import ManifestItem, SourceBook, TocEntry
+from .resources import resolve_path
 
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -48,6 +52,8 @@ def read_source_book(path: Path) -> SourceBook:
     basename = safe_basename(path)
     try:
         with zipfile.ZipFile(path, "r") as zf:
+            if "META-INF/encryption.xml" in zf.namelist():
+                raise InvalidEpubError(f"{basename}: encrypted or obfuscated resources are not supported")
             opf_path = _read_opf_path(zf)
             opf_dir = str(PurePosixPath(opf_path).parent)
             if opf_dir == ".":
@@ -125,40 +131,30 @@ def write_mimetype_first(zf: zipfile.ZipFile) -> None:
 
 
 def build_nav_html(book_title: str, book_href: str, children: Iterable[tuple[str, str, list[TocEntry]]]) -> bytes:
-    html = ET.Element("html", {"xmlns": XHTML_NS, "xmlns:epub": "http://www.idpf.org/2007/ops"})
-    head = ET.SubElement(html, "head")
-    ET.SubElement(head, "title").text = book_title
-    body = ET.SubElement(html, "body")
-    nav = ET.SubElement(body, "nav", {"epub:type": "toc", "id": "toc"})
-    root_ol = ET.SubElement(nav, "ol")
-    root_li = ET.SubElement(root_ol, "li")
-    ET.SubElement(root_li, "a", {"href": book_href}).text = book_title
-    nested = ET.SubElement(root_li, "ol")
-    for title, href, entries in children:
-        li = ET.SubElement(nested, "li")
-        ET.SubElement(li, "a", {"href": href}).text = title
-        if entries:
-            ol = ET.SubElement(li, "ol")
-            for entry in entries:
-                child = ET.SubElement(ol, "li")
-                ET.SubElement(child, "a", {"href": entry.href}).text = entry.title
-    return ET.tostring(html, encoding="utf-8", xml_declaration=True)
+    entries = []
+    for title, href, chapters in children:
+        entries.append(TocEntry(title, href))
+        entries.extend(TocEntry(entry.title, entry.href, entry.depth + 1) for entry in chapters)
+    return build_flat_nav_html(book_title, book_href, entries)
 
 
 def build_flat_nav_html(book_title: str, book_href: str, entries: Iterable[TocEntry]) -> bytes:
-    html = ET.Element("html", {"xmlns": XHTML_NS, "xmlns:epub": "http://www.idpf.org/2007/ops"})
-    head = ET.SubElement(html, "head")
+    root = ET.Element("html", {"xmlns": XHTML_NS, "xmlns:epub": "http://www.idpf.org/2007/ops"})
+    head = ET.SubElement(root, "head")
     ET.SubElement(head, "title").text = book_title
-    body = ET.SubElement(html, "body")
+    body = ET.SubElement(root, "body")
     nav = ET.SubElement(body, "nav", {"epub:type": "toc", "id": "toc"})
-    root_ol = ET.SubElement(nav, "ol")
-    root_li = ET.SubElement(root_ol, "li")
-    ET.SubElement(root_li, "a", {"href": book_href}).text = book_title
-    nested = ET.SubElement(root_li, "ol")
+    lists = [ET.SubElement(nav, "ol")]
+    last_li = None
     for entry in entries:
-        li = ET.SubElement(nested, "li")
-        ET.SubElement(li, "a", {"href": entry.href}).text = entry.title
-    return ET.tostring(html, encoding="utf-8", xml_declaration=True)
+        depth = min(entry.depth, len(lists)) if last_li is not None else 0
+        if depth >= len(lists):
+            lists.append(ET.SubElement(last_li, "ol"))
+        else:
+            lists = lists[:depth + 1]
+        last_li = ET.SubElement(lists[-1], "li")
+        ET.SubElement(last_li, "a", {"href": entry.href}).text = entry.title
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def build_opf(
@@ -171,17 +167,22 @@ def build_opf(
 ) -> bytes:
     pkg = ET.Element(f"{{{OPF_NS}}}package", {"version": "3.0", "unique-identifier": "bookid"})
     metadata = ET.SubElement(pkg, f"{{{OPF_NS}}}metadata")
-    ET.SubElement(metadata, f"{{{DC_NS}}}identifier", {"id": "bookid"}).text = f"urn:epub-merge:{title}"
+    ET.SubElement(metadata, f"{{{DC_NS}}}identifier", {"id": "bookid"}).text = f"urn:uuid:{uuid.uuid4()}"
     ET.SubElement(metadata, f"{{{DC_NS}}}title").text = title
     ET.SubElement(metadata, f"{{{DC_NS}}}language").text = language
     for creator in creators:
         ET.SubElement(metadata, f"{{{DC_NS}}}creator").text = creator
+    ET.SubElement(metadata, f"{{{OPF_NS}}}meta", {"property": "dcterms:modified"}).text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     manifest = ET.SubElement(pkg, f"{{{OPF_NS}}}manifest")
+    manifest_items = list(manifest_items)
+    nav_id = "nav"
+    while any(item.item_id == nav_id for item in manifest_items):
+        nav_id = "_" + nav_id
     ET.SubElement(
         manifest,
         f"{{{OPF_NS}}}item",
         {
-            "id": "nav",
+            "id": nav_id,
             "href": nav_href,
             "media-type": "application/xhtml+xml",
             "properties": "nav",
@@ -208,6 +209,8 @@ def require_manifest(data: bytes) -> dict:
         raise ManifestError("invalid epub-merge-tool manifest JSON") from exc
     if manifest.get("schema") != "epub-merge-tool/v1":
         raise ManifestError("unsupported epub-merge-tool manifest schema")
+    if not isinstance(manifest.get("sources"), list) or not manifest["sources"]:
+        raise ManifestError("merge record has no source volumes")
     return manifest
 
 
@@ -234,11 +237,11 @@ def _read_toc(
     nav_item = next((item for item in items if "nav" in item.properties), None)
     if nav_item is not None:
         nav_data = _read_member(zf, _join_opf(opf_dir, nav_item.href), basename)
-        return _parse_nav(nav_data, basename)
+        return _relative_toc(_parse_nav(nav_data, basename), opf_dir, resolve_path(opf_dir, nav_item.href))
     ncx_item = _find_ncx_item(items, spine_node)
     if ncx_item is not None:
         ncx_data = _read_member(zf, _join_opf(opf_dir, ncx_item.href), basename)
-        return _parse_ncx(ncx_data, basename)
+        return _relative_toc(_parse_ncx(ncx_data, basename), opf_dir, resolve_path(opf_dir, ncx_item.href))
     toc: list[TocEntry] = []
     for index, item_id in enumerate(spine_ids, start=1):
         item = id_to_item[item_id]
@@ -274,12 +277,17 @@ def _parse_nav(data: bytes, basename: str) -> list[TocEntry]:
     if toc_node is None:
         raise InvalidEpubError(f"{basename}: nav file has no nav element")
     entries = []
-    for node in toc_node.iter():
+    def visit(node, depth=0):
+        if _local_name(node.tag) == "ol":
+            depth += 1
         if _local_name(node.tag) == "a":
             href = node.get("href")
             title = "".join(node.itertext()).strip()
             if href and title:
-                entries.append(TocEntry(title, href))
+                entries.append(TocEntry(title, href, max(0, depth - 1)))
+        for child in node:
+            visit(child, depth)
+    visit(toc_node)
     if not entries:
         raise InvalidEpubError(f"{basename}: nav file has no TOC links")
     return entries
@@ -288,6 +296,7 @@ def _parse_nav(data: bytes, basename: str) -> list[TocEntry]:
 def _parse_ncx(data: bytes, basename: str) -> list[TocEntry]:
     root = _parse_xml(data, f"{basename}:toc.ncx")
     entries: list[TocEntry] = []
+    parents = {child: parent for parent in root.iter() for child in parent}
     for node in root.iter():
         if _local_name(node.tag) != "navPoint":
             continue
@@ -302,7 +311,13 @@ def _parse_ncx(data: bytes, basename: str) -> list[TocEntry]:
                 href = child.get("src") or ""
                 break
         if title and href:
-            entries.append(TocEntry(title, href))
+            depth = 0
+            parent = parents.get(node)
+            while parent is not None:
+                if _local_name(parent.tag) == "navPoint":
+                    depth += 1
+                parent = parents.get(parent)
+            entries.append(TocEntry(title, href, depth))
     if not entries:
         raise InvalidEpubError(f"{basename}: toc.ncx has no navPoint entries")
     return entries
@@ -316,7 +331,7 @@ def _read_member(zf: zipfile.ZipFile, name: str, basename: str) -> bytes:
 
 
 def _join_opf(opf_dir: str, href: str) -> str:
-    return posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
+    return resolve_path(opf_dir, href)
 
 
 def _parse_xml(data: bytes, label: str) -> ET.Element:
@@ -348,3 +363,14 @@ def _text(node: ET.Element | None) -> str | None:
 
 def _local_name(tag: str) -> str:
     return tag.split("}", 1)[-1] if "}" in tag else tag
+
+
+def _relative_toc(entries: list[TocEntry], opf_dir: str, nav_path: str) -> list[TocEntry]:
+    import re
+    result = []
+    for entry in entries:
+        suffix = re.search(r"[?#].*$", entry.href)
+        target = nav_path if entry.href.startswith("#") else resolve_path(posixpath.dirname(nav_path), entry.href)
+        href = quote(posixpath.relpath(target, opf_dir or "."), safe="/") + (suffix.group() if suffix else "")
+        result.append(TocEntry(entry.title, href, entry.depth))
+    return result

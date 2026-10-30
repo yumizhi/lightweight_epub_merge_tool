@@ -1,4 +1,4 @@
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import { XMLBuilder, XMLParser, XMLValidator } from "fast-xml-parser";
 
 export const parser = new XMLParser({
   ignoreAttributes: false,
@@ -7,7 +7,7 @@ export const parser = new XMLParser({
   preserveOrder: false,
   parseTagValue: false,
   parseAttributeValue: false,
-  trimValues: true
+  trimValues: true,
 });
 
 export const builder = new XMLBuilder({
@@ -15,15 +15,21 @@ export const builder = new XMLBuilder({
   attributeNamePrefix: "@_",
   textNodeName: "#text",
   format: true,
-  suppressEmptyNode: false
+  suppressEmptyNode: false,
 });
 
 export function parseXml(data: Uint8Array | string): unknown {
-  const text = typeof data === "string" ? data : new TextDecoder("utf-8").decode(data);
+  const text =
+    typeof data === "string" ? data : new TextDecoder("utf-8").decode(data);
+  const result = XMLValidator.validate(text);
+  if (result !== true) throw new Error(`Invalid XML: ${result.err.msg}`);
   return parser.parse(text) as unknown;
 }
 
-export function localKey(obj: Record<string, unknown>, desired: string): unknown {
+export function localKey(
+  obj: Record<string, unknown>,
+  desired: string,
+): unknown {
   for (const [key, value] of Object.entries(obj)) {
     const local = key.includes(":") ? key.split(":").pop() : key;
     if (local === desired) return value;

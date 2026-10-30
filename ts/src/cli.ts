@@ -8,6 +8,14 @@ import { splitEpub } from "./split.js";
 
 function main(argv: string[]): number {
   const [command, ...args] = argv;
+  if (
+    ["--help", "-h"].includes(command) ||
+    args.includes("--help") ||
+    args.includes("-h")
+  ) {
+    usage();
+    return 0;
+  }
   try {
     if (command === "merge") return runMerge(args);
     if (command === "inspect") return runInspect(args);
@@ -30,14 +38,25 @@ function runMerge(args: string[]): number {
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--title") title = args[++i];
-    else if (arg === "--structure") structure = args[++i] as "volume" | "flat";
-    else if (arg === "--input-order") inputOrder = true;
+    if (arg === "--title") {
+      title = args[++i];
+      if (!title) throw new EpubMergeError("--title requires a value");
+    } else if (arg === "--structure") {
+      structure = args[++i] as "volume" | "flat";
+      if (!structure) throw new EpubMergeError("--structure requires a value");
+    } else if (arg === "--input-order") inputOrder = true;
+    else if (arg.startsWith("--"))
+      throw new EpubMergeError(`Unknown option: ${arg}`);
     else rest.push(arg);
   }
-  if (rest.length < 2) throw new EpubMergeError("merge requires OUTPUT and INPUT...");
+  if (rest.length < 2)
+    throw new EpubMergeError("merge requires OUTPUT and INPUT...");
   const [output, ...inputs] = rest;
-  const result = mergeEpubs(output, inputs.map((name) => ({ name, data: readFileSync(name) })), { title, structure, inputOrder });
+  const result = mergeEpubs(
+    output,
+    inputs.map((name) => ({ name, data: readFileSync(name) })),
+    { title, structure, inputOrder },
+  );
   writeFileSync(output, result.data);
   return 0;
 }
@@ -54,9 +73,12 @@ function runSplit(args: string[]): number {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--out-dir") outDir = args[++i];
+    else if (arg.startsWith("--"))
+      throw new EpubMergeError(`Unknown option: ${arg}`);
     else rest.push(arg);
   }
-  if (rest.length !== 1 || !outDir) throw new EpubMergeError("split requires INPUT --out-dir DIR");
+  if (rest.length !== 1 || !outDir)
+    throw new EpubMergeError("split requires INPUT --out-dir DIR");
   mkdirSync(outDir, { recursive: true });
   for (const result of splitEpub(readFileSync(rest[0]))) {
     writeFileSync(join(outDir, result.name), result.data);
@@ -65,7 +87,13 @@ function runSplit(args: string[]): number {
 }
 
 function usage(): void {
-  console.error("usage: ts-epub-merge {merge,split,inspect} ...");
+  console.log(`EPUB Toolkit 1.0.0
+usage: node dist-ts/src/cli.js COMMAND
+  merge OUTPUT INPUT... [--title TITLE] [--structure volume|flat] [--input-order]
+  split INPUT --out-dir DIR
+  inspect INPUT
+
+Split reconstructs source volumes from EPUBs merged with this tool.`);
 }
 
 process.exitCode = main(process.argv.slice(2));
