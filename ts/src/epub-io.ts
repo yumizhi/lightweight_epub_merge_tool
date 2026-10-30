@@ -279,7 +279,7 @@ function tocList(entries: TocEntry[]): string {
       if (depth > previous) html += "<ol>";
       else html += "</li>" + "</ol></li>".repeat(previous - depth);
     }
-    html += `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>`;
+    html += entry.href ? `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>` : `<li><span>${escapeXml(entry.title)}</span>`;
     previous = depth;
   });
   return html + (entries.length ? "</li>" + "</ol></li>".repeat(previous) : "");
@@ -365,6 +365,7 @@ function relativeToc(
   tocPath: string,
 ): TocEntry[] {
   return entries.map((entry) => {
+    if (!entry.href) return entry;
     const index = entry.href.search(/[?#]/);
     const suffix = index < 0 ? "" : entry.href.slice(index);
     return {
@@ -373,7 +374,7 @@ function relativeToc(
         encodePath(
           relPosix(
             opfDir,
-            entry.href.startsWith("#")
+            /^[?#]/.test(entry.href)
               ? tocPath
               : resolvePath(dirnamePosix(tocPath), entry.href),
           ),
@@ -395,55 +396,59 @@ function findNcx(
   );
 }
 
-function parseNav(data: Uint8Array, basename: string): TocEntry[] {
-  const root = parseXml(data);
-  const navs: Record<string, unknown>[] = [];
-  visit(root, (nodeName, node) => {
-    if (localName(nodeName) === "nav") navs.push(node);
-  });
-  const toc =
-    navs.find((node) =>
-      String(node["@_epub:type"] ?? node["@_type"] ?? "").includes("toc"),
-    ) ?? navs[0];
-  if (!toc)
-    throw new InvalidEpubError(`${basename}: nav file has no nav element`);
-  const entries: TocEntry[] = [];
-  visit(toc, (nodeName, node, depth) => {
-    if (localName(nodeName) === "a" && typeof node["@_href"] === "string") {
-      const title = collectText(node).trim();
-      if (title)
-        entries.push({
-          title,
-          href: node["@_href"],
-          ...(depth > 1 ? { depth: depth - 1 } : {}),
-        });
+type OrderedNode = Record<string, unknown>;
+function orderedChildren(node: OrderedNode, name: string): OrderedNode[] {
+  const key = Object.keys(node).find((key) => localName(key) === name);
+  return key && Array.isArray(node[key]) ? node[key] as OrderedNode[] : [];
+}
+function orderedText(nodes: OrderedNode[]): string {
+  return nodes.map((node) => typeof node["#text"] === "string" ? node["#text"] : Object.keys(node).filter((key) => key !== ":@").map((key) => Array.isArray(node[key]) ? orderedText(node[key] as OrderedNode[]) : "").join("")).join("");
+}
+function walkOrdered(nodes: OrderedNode[], cb: (name: string, children: OrderedNode[], attrs: Record<string, string>, depth: number) => void, depth = 0): void {
+  for (const node of nodes) {
+    for (const [key, value] of Object.entries(node)) {
+      if (!Array.isArray(value)) continue;
+      const name = localName(key);
+      const next = depth + (["ol", "navPoint"].includes(name) ? 1 : 0);
+      cb(name, value, (node[":@"] ?? {}) as Record<string, string>, next);
+      walkOrdered(value, cb, next);
     }
+  }
+}
+function orderedDocument(data: Uint8Array): OrderedNode[] {
+  // Reuse XML validation, then preserve mixed text order in navigation labels.
+  return parseXml(data, true) as OrderedNode[];
+}
+function parseNav(data: Uint8Array, basename: string): TocEntry[] {
+  const navs: Array<{ children: OrderedNode[]; type: string }> = [];
+  walkOrdered(orderedDocument(data), (name, children, attrs) => {
+    if (name === "nav") navs.push({ children, type: attrs["@_epub:type"] ?? attrs["@_type"] ?? "" });
   });
-  if (!entries.length)
-    throw new InvalidEpubError(`${basename}: nav file has no TOC links`);
+  const toc = navs.find((nav) => nav.type.split(/\s+/).includes("toc")) ?? navs[0];
+  if (!toc) throw new InvalidEpubError(`${basename}: nav file has no nav element`);
+  const entries: TocEntry[] = [];
+  walkOrdered(toc.children, (name, children, _, depth) => {
+    if (name !== "li") return;
+    const label = children.find((node) => Object.keys(node).some((key) => ["a", "span"].includes(localName(key))));
+    if (!label) return;
+    const title = orderedText(orderedChildren(label, "a").length ? orderedChildren(label, "a") : orderedChildren(label, "span")).trim();
+    const attrs = (label[":@"] ?? {}) as Record<string, string>;
+    if (title) entries.push({ title, href: attrs["@_href"] ?? "", ...(depth > 1 ? { depth: depth - 1 } : {}) });
+  });
+  if (!entries.some((entry) => entry.href)) throw new InvalidEpubError(`${basename}: nav file has no TOC links`);
   return entries;
 }
-
 function parseNcx(data: Uint8Array, basename: string): TocEntry[] {
-  const root = parseXml(data);
   const entries: TocEntry[] = [];
-  visit(root, (nodeName, node, depth) => {
-    if (localName(nodeName) !== "navPoint") return;
-    const label = firstDescendantValue(node, "text");
-    const content = firstDescendantValue(node, "content");
-    const title = label ? collectText(label).trim() : "";
-    const href =
-      content &&
-      typeof content === "object" &&
-      !Array.isArray(content) &&
-      typeof (content as Record<string, unknown>)["@_src"] === "string"
-        ? String((content as Record<string, unknown>)["@_src"])
-        : "";
-    if (title && href)
-      entries.push({ title, href, ...(depth > 1 ? { depth: depth - 1 } : {}) });
+  walkOrdered(orderedDocument(data), (name, children, _, depth) => {
+    if (name !== "navPoint") return;
+    const label = children.find((node) => orderedChildren(node, "navLabel").length);
+    const content = children.find((node) => Object.keys(node).some((key) => localName(key) === "content"));
+    const title = label ? orderedText(orderedChildren(label, "navLabel")).trim() : "";
+    const href = ((content?.[":@"] ?? {}) as Record<string, string>)["@_src"];
+    if (title && href) entries.push({ title, href, ...(depth > 1 ? { depth: depth - 1 } : {}) });
   });
-  if (!entries.length)
-    throw new InvalidEpubError(`${basename}: toc.ncx has no navPoint entries`);
+  if (!entries.length) throw new InvalidEpubError(`${basename}: toc.ncx has no navPoint entries`);
   return entries;
 }
 
@@ -497,67 +502,6 @@ function stringAttr(
   return typeof value === "string" ? value : undefined;
 }
 
-function visit(
-  value: unknown,
-  cb: (nodeName: string, node: Record<string, unknown>, depth: number) => void,
-  depth = 0,
-): void {
-  if (!value || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) visit(item, cb, depth);
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  for (const [key, child] of Object.entries(obj)) {
-    if (key.startsWith("@_") || key === "#text") continue;
-    if (child && typeof child === "object") {
-      for (const node of asArray(
-        child as Record<string, unknown> | Record<string, unknown>[],
-      )) {
-        const nextDepth =
-          depth + (["ol", "navPoint"].includes(localName(key)) ? 1 : 0);
-        cb(key, node, nextDepth);
-        visit(node, cb, nextDepth);
-      }
-    }
-  }
-}
-
-function firstDescendantValue(
-  node: Record<string, unknown>,
-  desired: string,
-): unknown {
-  for (const [key, value] of Object.entries(node)) {
-    if (localName(key) === desired)
-      return Array.isArray(value) ? value[0] : value;
-    if (value && typeof value === "object") {
-      const values = Array.isArray(value) ? value : [value];
-      for (const child of values) {
-        if (child && typeof child === "object") {
-          const found = firstDescendantValue(
-            child as Record<string, unknown>,
-            desired,
-          );
-          if (found !== undefined) return found;
-        }
-      }
-    }
-  }
-  return undefined;
-}
-
-function collectText(value: unknown): string {
-  if (typeof value === "string" || typeof value === "number")
-    return String(value);
-  if (!value || typeof value !== "object") return "";
-  if (Array.isArray(value)) return value.map(collectText).join("");
-  const obj = value as Record<string, unknown>;
-  let out = typeof obj["#text"] === "string" ? obj["#text"] : "";
-  for (const [key, child] of Object.entries(obj)) {
-    if (!key.startsWith("@_") && key !== "#text") out += collectText(child);
-  }
-  return out;
-}
 
 function localName(key: string): string {
   return key.includes(":") ? key.split(":").pop()! : key;

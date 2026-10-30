@@ -222,10 +222,10 @@ function* mergeEntries(outputName: string, names: string[], options: MergeOption
         hrefMap,
       ),
     }));
-    if (firstHref === "#" && remapped.length) firstHref = remapped[0].href;
+    if (firstHref === "#") firstHref = remapped.find((entry) => entry.href)?.href ?? "#";
     volumeToc.push({
       title: source.title,
-      href: remapped[0]?.href ?? "#",
+      href: remapped.find((entry) => entry.href)?.href ?? "#",
       entries: remapped,
     });
     flatToc.push(...remapped.map((entry) => ({ ...entry, depth: 0 })));

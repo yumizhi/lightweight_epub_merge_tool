@@ -145,9 +145,9 @@ def merge_epubs(
             remapped_toc = [
                 TocEntry(entry.title, remap_reference(entry.href, source.opf_path, "nav-merged.xhtml", href_map), entry.depth) for entry in source.toc
             ]
-            if first_href == "#" and remapped_toc:
-                first_href = remapped_toc[0].href
-            source_href = remapped_toc[0].href if remapped_toc else "#"
+            source_href = next((entry.href for entry in remapped_toc if entry.href), "#")
+            if first_href == "#":
+                first_href = source_href
             source_tocs.append((source.title, source_href, remapped_toc))
             flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc)
             manifest_sources.append(

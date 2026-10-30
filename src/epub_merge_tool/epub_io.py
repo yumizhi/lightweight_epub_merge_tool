@@ -162,7 +162,7 @@ def build_flat_nav_html(book_title: str, book_href: str, entries: Iterable[TocEn
         else:
             lists = lists[:depth + 1]
         last_li = ET.SubElement(lists[-1], "li")
-        ET.SubElement(last_li, "a", {"href": entry.href}).text = entry.title
+        ET.SubElement(last_li, "a" if entry.href else "span", {"href": entry.href} if entry.href else {}).text = entry.title
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
@@ -302,15 +302,16 @@ def _parse_nav(data: bytes, basename: str) -> list[TocEntry]:
     def visit(node, depth=0):
         if _local_name(node.tag) == "ol":
             depth += 1
-        if _local_name(node.tag) == "a":
-            href = node.get("href")
-            title = "".join(node.itertext()).strip()
-            if href and title:
-                entries.append(TocEntry(title, href, max(0, depth - 1)))
+        if _local_name(node.tag) == "li":
+            label = next((child for child in node if _local_name(child.tag) in {"a", "span"}), None)
+            if label is not None:
+                title = "".join(label.itertext()).strip()
+                if title:
+                    entries.append(TocEntry(title, label.get("href") or "", max(0, depth - 1)))
         for child in node:
             visit(child, depth)
     visit(toc_node)
-    if not entries:
+    if not any(entry.href for entry in entries):
         raise InvalidEpubError(f"{basename}: nav file has no TOC links")
     return entries
 
@@ -391,8 +392,11 @@ def _relative_toc(entries: list[TocEntry], opf_dir: str, nav_path: str) -> list[
     import re
     result = []
     for entry in entries:
+        if not entry.href:
+            result.append(entry)
+            continue
         suffix = re.search(r"[?#].*$", entry.href)
-        target = nav_path if entry.href.startswith("#") else resolve_path(posixpath.dirname(nav_path), entry.href)
+        target = nav_path if entry.href.startswith(("#", "?")) else resolve_path(posixpath.dirname(nav_path), entry.href)
         href = quote(posixpath.relpath(target, opf_dir or "."), safe="/") + (suffix.group() if suffix else "")
         result.append(TocEntry(entry.title, href, entry.depth))
     return result

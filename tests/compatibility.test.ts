@@ -39,3 +39,12 @@ it("rejects an unresolved document reference even when no resource was pooled",(
   const book={name:'volume-1.epub',data:writeZip([...zip].map(([name,data])=>({name,data})))};
   expect(()=>mergeEpubs('bad.epub',[book])).toThrow(/missing resource/);
 });
+
+it("keeps mixed label text and non-link TOC headings in reading order",()=>{
+  const zip=readZip(fixture());
+  zip.set("OEBPS/nav.xhtml",bytes(text(zip.get("OEBPS/nav.xhtml")!).replace('<li><a href="Text/chapter.xhtml#start">Chapter 1</a></li>','<li><span>Part <em>One</em></span><ol><li><a href="Text/chapter.xhtml#start">Chapter <strong>One</strong> end</a></li></ol></li>')));
+  const source={name:'volume-1.epub',data:writeZip([...zip].map(([name,data])=>({name,data})))};
+  expect(readSourceBook(source).toc).toEqual([{title:'Part One',href:''},{title:'Chapter One end',href:'Text/chapter.xhtml#start',depth:1}]);
+  const merged=mergeEpubs('headings.epub',[source]);
+  expect(readSourceBook(splitEpub(merged.data)[0]).toc).toEqual(readSourceBook(source).toc);
+});
