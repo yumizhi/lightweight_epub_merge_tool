@@ -2,6 +2,7 @@ import { builder, localKey, parseXml } from "./xml.js";
 import { InvalidEpubError, ManifestError } from "./errors.js";
 import type {
   InputFile,
+  PackageMetadata,
   ManifestItem,
   SourceBook,
   TocEntry,
@@ -83,6 +84,25 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     return { id, href, mediaType, properties };
   });
 
+  const coverId = asArray(localKey(metadata, "meta")).find((value) => value && typeof value === "object" && (value as Record<string, unknown>)["@_name"] === "cover") as Record<string, unknown> | undefined;
+  const cover = items.find((item) => item.id === coverId?.["@_content"]);
+  if (cover && !cover.properties.includes("cover-image")) cover.properties.push("cover-image");
+  const identifierId = stringAttr(opfRoot, "unique-identifier");
+  const identifiers = asArray(localKey(metadata, "identifier"));
+  const identifier = identifiers.find((value) => value && typeof value === "object" && (value as Record<string, unknown>)["@_id"] === identifierId) ?? identifiers[0];
+  const packageMetadata: PackageMetadata = {
+    identifier: textValue(identifier),
+    publisher: textValue(localKey(metadata, "publisher")),
+    description: textValue(localKey(metadata, "description")),
+    rights: textValue(localKey(metadata, "rights")),
+    date: textValue(localKey(metadata, "date")),
+    subjects: asArray(localKey(metadata, "subject")).map(textValue).filter((v): v is string => !!v),
+    pageProgressionDirection: stringAttr(spineNode, "page-progression-direction"),
+    spine: asArray(localKey(spineNode, "itemref")).map((value) => {
+      const node = value as Record<string, unknown>;
+      return { linear: stringAttr(node, "linear"), properties: stringAttr(node, "properties") };
+    }),
+  };
   const names = metadataOnly ? zipNames(input.data) : undefined;
   if (new Set(items.map((item) => item.id)).size !== items.length)
     throw new InvalidEpubError(`${basename}: duplicate manifest IDs`);
@@ -137,6 +157,7 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     spineIds,
     toc,
     itemData,
+    packageMetadata,
   };
 }
 
@@ -148,7 +169,7 @@ export function baseZipEntries(opfPath = "OEBPS/content.opf"): ZipEntry[] {
       data: utf8Encode(`<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="${escapeXml(opfPath)}" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="${escapeXml(encodePath(opfPath))}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>
 `),
@@ -163,6 +184,7 @@ export function buildOpf(
   items: ManifestItem[],
   spineIds: string[],
   navHref = "nav-merged.xhtml",
+  metadata: PackageMetadata = {},
 ): Uint8Array {
   let navId = "nav";
   while (items.some((item) => item.id === navId)) navId = "_" + navId;
@@ -185,12 +207,14 @@ export function buildOpf(
         "@_xmlns:dc": "http://purl.org/dc/elements/1.1/",
         "dc:identifier": {
           "@_id": "bookid",
-          "#text": `urn:uuid:${crypto.randomUUID()}`,
+          "#text": metadata.identifier ?? `urn:uuid:${crypto.randomUUID()}`,
         },
         meta: {
           "@_property": "dcterms:modified",
           "#text": new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
         },
+        ...Object.fromEntries(["publisher", "description", "rights", "date"].filter((key) => metadata[key as keyof PackageMetadata]).map((key) => [`dc:${key}`, metadata[key as keyof PackageMetadata]])),
+        ...(metadata.subjects?.length ? { "dc:subject": metadata.subjects } : {}),
         "dc:title": title,
         "dc:language": language,
         ...(creators.length ? { "dc:creator": creators } : {}),
@@ -207,7 +231,11 @@ export function buildOpf(
         ],
       },
       spine: {
-        itemref: spineIds.map((id) => ({ "@_idref": id })),
+        ...(metadata.pageProgressionDirection ? { "@_page-progression-direction": metadata.pageProgressionDirection } : {}),
+        itemref: spineIds.map((id, index) => ({ "@_idref": id,
+          ...(metadata.spine?.[index]?.linear ? { "@_linear": metadata.spine[index].linear } : {}),
+          ...(metadata.spine?.[index]?.properties ? { "@_properties": metadata.spine[index].properties } : {}),
+        })),
       },
     },
   };
@@ -293,7 +321,7 @@ function readOpfPath(zip: Pick<Map<string, Uint8Array>, "get">): string {
     asArray(localKey(rootfiles, "rootfile"))[0],
     "missing rootfile",
   );
-  return attr(rootfile, "full-path", "rootfile missing full-path");
+  return resolvePath("", attr(rootfile, "full-path", "rootfile missing full-path"));
 }
 
 function readToc(

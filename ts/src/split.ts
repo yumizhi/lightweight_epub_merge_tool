@@ -6,8 +6,8 @@ import {
   MERGE_MANIFEST_PATH,
   requireMergeManifest,
 } from "./epub-io.js";
-import type { SplitResult, TocEntry, ManifestItem } from "./models.js";
-import { resolvePath, rewriteReferences } from "./resources.js";
+import type { SplitResult, TocEntry, ManifestItem, PackageMetadata } from "./models.js";
+import { archivePath, resolvePath, rewriteReferences } from "./resources.js";
 import { dirnamePosix, safeBasename } from "./utils.js";
 import { readZip, writeZip, type ZipEntry } from "./zip.js";
 
@@ -43,7 +43,7 @@ function splitSource(
       (p) => p !== "nav",
     ),
   }));
-  const opfPath = resolvePath("", String(source.opf_path));
+  const opfPath = archivePath(String(source.opf_path));
   const opfDir = dirnamePosix(opfPath);
   let navHref = "epub-toolkit-nav.xhtml";
   while (
@@ -66,6 +66,7 @@ function splitSource(
       items,
       spine,
       navHref,
+      (source.package_metadata ?? {}) as PackageMetadata,
     ),
   });
   for (const file of files) {

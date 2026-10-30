@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { input } from "./fixtures.js";
+import { compatibilityBook, input } from "./fixtures.js";
 import { mergeEpubs, readSourceBook, splitEpub } from "../ts/src/index.js";
 const python =
   process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
@@ -72,4 +72,28 @@ describe("Python CLI interoperability", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30000);
+});
+
+it("restores package metadata and literal archive paths in both CLI directions", () => {
+  const dir = mkdtempSync(join(tmpdir(), "epub-compat-cli-"));
+  try {
+    const books = [compatibilityBook(1), compatibilityBook(2, 2)];
+    for (const book of books) writeFileSync(join(dir, book.name), book.data);
+    const path = join(dir, "collection.epub");
+    cli("merge", path, ...books.map(book => join(dir, book.name)));
+    const fromPython = splitEpub(readFileSync(path));
+    for (const book of fromPython.map(readSourceBook)) {
+      expect(book.packageMetadata?.publisher).toBe("出版社");
+      expect(book.packageMetadata?.pageProgressionDirection).toBe("rtl");
+      expect(book.packageMetadata?.spine?.[0].linear).toBe("no");
+    }
+    writeFileSync(path, mergeEpubs("collection.epub", books).data);
+    cli("split", path, "--out-dir", join(dir, "split"));
+    for (const book of books) {
+      const restored = readSourceBook({ name: book.name, data: readFileSync(join(dir, "split", book.name)) });
+      expect(restored.packageMetadata?.identifier).toBe(readSourceBook(book).packageMetadata?.identifier);
+      expect(restored.packageMetadata?.rights).toBe("CC0 test fixture");
+      expect(restored.itemData.get("../Images/%E6%8F%92%E5%9B%BE%20%231.png")).toEqual(readSourceBook(book).itemData.get("../Images/%E6%8F%92%E5%9B%BE%20%231.png"));
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -34,6 +34,8 @@ class SourceBook:
     toc: tuple[TocEntry, ...]
     item_data: dict[str, bytes] = field(repr=False)
 
+    package_metadata: dict = field(default_factory=dict)
+
     def item_by_id(self, item_id: str) -> ManifestItem:
         for item in self.manifest_items:
             if item.item_id == item_id:

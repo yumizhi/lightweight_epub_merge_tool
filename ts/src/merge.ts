@@ -74,11 +74,17 @@ export function mergeEpubs(
   let hasCover = false;
   let language = "en";
   const creators = new Set<string>();
+  const spineProperties: NonNullable<import("./models.js").PackageMetadata["spine"]> = [];
+  let pageProgressionDirection: string | undefined;
 
   orderedInputs.forEach((input, sourceIndex) => {
     // Explicit input order needs no metadata prepass.
     const source = readSourceBook(input);
-    if (sourceIndex === 0) language = source.language;
+    if (sourceIndex === 0) {
+      language = source.language;
+      pageProgressionDirection = source.packageMetadata?.pageProgressionDirection;
+    }
+    spineProperties.push(...source.spineIds.map((_, index) => source.packageMetadata?.spine?.[index] ?? {}));
     for (const creator of source.creators) creators.add(creator);
     const prefix = `v${sourceIndex + 1}/`;
     const hrefMap = new Map<string, string>();
@@ -119,6 +125,10 @@ export function mergeEpubs(
           properties,
         });
       }
+      if (!hasCover && item.properties.includes("cover-image")) {
+        outputItems.find((output) => output.id === ownerId)!.properties.push("cover-image");
+        hasCover = true;
+      }
       idMap.set(item.id, ownerId);
       fileRecords.push({
         id: item.id,
@@ -131,10 +141,6 @@ export function mergeEpubs(
 
     // A uniform directory prefix preserves every relative reference. Only
     // pooled resources can require rewriting the source documents.
-    const needsRewrite = [...hrefMap].some(
-      ([original, destination]) =>
-        destination !== encodePath(`${prefix}${original}`),
-    );
     for (const item of source.manifestItems) {
       if (item.mediaType === "application/x-dtbncx+xml") continue;
       let data = source.itemData.get(item.href);
@@ -145,8 +151,7 @@ export function mergeEpubs(
       const originalPath = resolvePath(source.opfDir, item.href);
       const finalHref = hrefMap.get(originalPath)!;
       const rewriteMap: Record<string, string> = {};
-      if (needsRewrite)
-        data = rewriteReferences(data, item.mediaType, (href) => {
+      data = rewriteReferences(data, item.mediaType, (href) => {
           const result = remapReference(
             href,
             originalPath,
@@ -196,6 +201,7 @@ export function mergeEpubs(
       language: source.language,
       creators: source.creators,
       opf_path: source.opfPath,
+      package_metadata: source.packageMetadata,
       files: fileRecords,
       spine: source.spineIds,
       toc: source.toc,
@@ -212,7 +218,7 @@ export function mergeEpubs(
   });
   zipEntries.push({
     name: "OEBPS/content.opf",
-    data: buildOpf(title, language, [...creators], outputItems, spineIds),
+    data: buildOpf(title, language, [...creators], outputItems, spineIds, "nav-merged.xhtml", { spine: spineProperties, pageProgressionDirection }),
   });
   zipEntries.push({
     name: MERGE_MANIFEST_PATH,

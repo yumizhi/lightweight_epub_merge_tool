@@ -92,6 +92,14 @@ def read_source_book(path: Path) -> SourceBook:
             if not spine_ids:
                 raise InvalidEpubError(f"{basename}: spine is empty")
 
+            cover_meta = opf_root.find(".//opf:meta[@name='cover']", NS)
+            if cover_meta is not None:
+                cover_id = cover_meta.get("content")
+                items = [ManifestItem(item.item_id, item.href, item.media_type, (*item.properties, "cover-image")) if item.item_id == cover_id and "cover-image" not in item.properties else item for item in items]
+            identifier_id = opf_root.get("unique-identifier")
+            identifier = next((node for node in opf_root.findall(".//dc:identifier", NS) if node.get("id") == identifier_id), opf_root.find(".//dc:identifier", NS))
+            package_metadata = {key: _text(opf_root.find(f".//dc:{key}", NS)) for key in ["publisher", "description", "rights", "date"]}
+            package_metadata.update(identifier=_text(identifier), subjects=[_text(node) for node in opf_root.findall(".//dc:subject", NS)], pageProgressionDirection=spine.get("page-progression-direction"), spine=[{key: node.get(key) for key in ["linear", "properties"] if node.get(key)} for node in spine.findall("opf:itemref", NS)])
             toc = _read_toc(zf, opf_dir, items, spine_ids, id_to_item, spine, basename)
     except zipfile.BadZipFile as exc:
         raise InvalidEpubError(f"Invalid EPUB zip: {path}") from exc
@@ -109,6 +117,7 @@ def read_source_book(path: Path) -> SourceBook:
         spine_ids=tuple(spine_ids),
         toc=tuple(toc),
         item_data=item_data,
+        package_metadata=package_metadata,
     )
 
 
@@ -118,7 +127,7 @@ def write_epub_container(zf: zipfile.ZipFile, opf_path: str = "OEBPS/content.opf
         f"""<?xml version="1.0"?>
 <container version="1.0" xmlns="{CONTAINER_NS}">
   <rootfiles>
-    <rootfile full-path="{opf_path}" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="{quote(opf_path, safe='/')}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>
 """,
@@ -164,15 +173,22 @@ def build_opf(
     manifest_items: Iterable[ManifestItem],
     spine_item_ids: Iterable[str],
     nav_href: str = "nav-merged.xhtml",
+    package_metadata: dict | None = None,
 ) -> bytes:
+    package_metadata = package_metadata or {}
     pkg = ET.Element(f"{{{OPF_NS}}}package", {"version": "3.0", "unique-identifier": "bookid"})
     metadata = ET.SubElement(pkg, f"{{{OPF_NS}}}metadata")
-    ET.SubElement(metadata, f"{{{DC_NS}}}identifier", {"id": "bookid"}).text = f"urn:uuid:{uuid.uuid4()}"
+    ET.SubElement(metadata, f"{{{DC_NS}}}identifier", {"id": "bookid"}).text = package_metadata.get("identifier") or f"urn:uuid:{uuid.uuid4()}"
     ET.SubElement(metadata, f"{{{DC_NS}}}title").text = title
     ET.SubElement(metadata, f"{{{DC_NS}}}language").text = language
     for creator in creators:
         ET.SubElement(metadata, f"{{{DC_NS}}}creator").text = creator
     ET.SubElement(metadata, f"{{{OPF_NS}}}meta", {"property": "dcterms:modified"}).text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for key in ["publisher", "description", "rights", "date"]:
+        if package_metadata.get(key):
+            ET.SubElement(metadata, f"{{{DC_NS}}}{key}").text = package_metadata[key]
+    for subject in package_metadata.get("subjects", []):
+        ET.SubElement(metadata, f"{{{DC_NS}}}subject").text = subject
     manifest = ET.SubElement(pkg, f"{{{OPF_NS}}}manifest")
     manifest_items = list(manifest_items)
     nav_id = "nav"
@@ -195,8 +211,14 @@ def build_opf(
             attrs["properties"] = " ".join(props)
         ET.SubElement(manifest, f"{{{OPF_NS}}}item", attrs)
     spine = ET.SubElement(pkg, f"{{{OPF_NS}}}spine")
-    for item_id in spine_item_ids:
-        ET.SubElement(spine, f"{{{OPF_NS}}}itemref", {"idref": item_id})
+    if package_metadata.get("pageProgressionDirection"):
+        spine.set("page-progression-direction", package_metadata["pageProgressionDirection"])
+    for index, item_id in enumerate(spine_item_ids):
+        attrs = {"idref": item_id}
+        recorded_spine = package_metadata.get("spine", [])
+        if index < len(recorded_spine):
+            attrs.update({key: value for key, value in recorded_spine[index].items() if value})
+        ET.SubElement(spine, f"{{{OPF_NS}}}itemref", attrs)
     return ET.tostring(pkg, encoding="utf-8", xml_declaration=True)
 
 
@@ -222,7 +244,7 @@ def _read_opf_path(zf: zipfile.ZipFile) -> str:
     node = root.find(".//c:rootfile", NS)
     if node is None:
         raise InvalidEpubError("missing rootfile in container.xml")
-    return _required_attr(node, "full-path", "rootfile missing full-path")
+    return resolve_path("", _required_attr(node, "full-path", "rootfile missing full-path"))
 
 
 def _read_toc(

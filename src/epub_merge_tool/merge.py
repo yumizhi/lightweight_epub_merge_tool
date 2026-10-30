@@ -158,6 +158,7 @@ def merge_epubs(
                     "language": source.language,
                     "creators": list(source.creators),
                     "opf_path": source.opf_path,
+                    "package_metadata": source.package_metadata,
                     "files": file_records,
                     "spine": list(source.spine_ids),
                     "toc": [{"title": entry.title, "href": entry.href, "depth": entry.depth} for entry in source.toc],
@@ -172,7 +173,7 @@ def merge_epubs(
         out.writestr("OEBPS/nav-merged.xhtml", nav, compress_type=zipfile.ZIP_DEFLATED)
         out.writestr(
             "OEBPS/content.opf",
-            build_opf(book_title, language, dict.fromkeys(creator for source in sources for creator in source.creators), manifest_items, spine_ids),
+            build_opf(book_title, language, dict.fromkeys(creator for source in sources for creator in source.creators), manifest_items, spine_ids, package_metadata={"pageProgressionDirection": sources[0].package_metadata.get("pageProgressionDirection"), "spine": [item for source in sources for item in source.package_metadata.get("spine", [])]}),
             compress_type=zipfile.ZIP_DEFLATED,
         )
         manifest = {
