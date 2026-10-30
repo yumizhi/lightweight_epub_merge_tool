@@ -147,7 +147,7 @@ test("keeps language and theme preferences and fits a phone", async ({
   await page.reload();
   await expect(page.locator("html")).toHaveClass("dark");
   await expect(
-    page.getByRole("heading", { name: "EPUB 工作台" }),
+    page.getByRole("tab", { name: "合并", exact: true }),
   ).toBeVisible();
   await page.getByLabel("选择文件", { exact: true }).setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "合并书籍" })).toBeEnabled();
@@ -156,8 +156,18 @@ test("keeps language and theme preferences and fits a phone", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await expect(page.locator(".task-status")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.locator(".workspace-grid").evaluate((grid) => {
+        const [files, settings] = Array.from(grid.children).map((node) =>
+          node.getBoundingClientRect(),
+        );
+        return settings.top >= files.bottom;
+      }),
+    )
+    .toBe(true);
   if (process.env.UPDATE_SCREENSHOTS) {
-    await expect(page.locator(".task-status")).toHaveCount(0);
     await page.screenshot({ path: "docs/mobile-dark.png", fullPage: true });
   }
 });
@@ -181,7 +191,7 @@ test("caches the Pages application and its Worker for offline processing", async
   await context.setOffline(true);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "EPUB workspace" }),
+    page.getByRole("heading", { name: "EPUB Toolkit", exact: true }),
   ).toBeVisible();
   await page
     .getByLabel("Choose files", { exact: true })

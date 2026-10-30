@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, WifiOff } from "lucide-react";
+import { Download } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { Button } from "./ui/button";
 import type { Copy } from "../i18n";
@@ -27,14 +27,10 @@ export function PwaStatus({ copy, locked }: { copy: Copy; locked: boolean }) {
       window.removeEventListener("appinstalled", installed);
     };
   }, []);
+  if (!offlineReady && !install && !needRefresh) return null;
   return (
     <div className="pwa-status">
-      {offlineReady && (
-        <span>
-          <WifiOff size={13} />
-          {copy.offline}
-        </span>
-      )}
+      {offlineReady && <span className="offline-status">{copy.offline}</span>}
       {install && (
         <Button
           variant="ghost"

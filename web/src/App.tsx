@@ -64,7 +64,7 @@ export function App() {
       <div className="app-shell">
         <header className="site-header">
           <a href={import.meta.env.BASE_URL} className="brand">
-            EPUB Toolkit
+            <h1>EPUB Toolkit</h1>
           </a>
           <nav className="header-tools" aria-label={copy.settings}>
             <Button
@@ -92,10 +92,6 @@ export function App() {
           </nav>
         </header>
         <main>
-          <div className="page-heading">
-            <h1>{copy.intro}</h1>
-            <p>{copy.description}</p>
-          </div>
           <Tabs
             value={w.mode}
             onValueChange={(value) => w.changeMode(value as Mode)}
@@ -109,9 +105,6 @@ export function App() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              <span className="local-note">
-                {language === "en" ? "Local processing" : "本地处理"}
-              </span>
             </div>
             {(["merge", "split", "inspect"] as const).map((mode) => (
               <TabsContent
@@ -351,8 +344,6 @@ export function App() {
                         </Button>
                       </CardContent>
                     </Card>
-                    <p className="privacy-note">{copy.privacyHint}</p>
-                    <PwaStatus copy={copy} locked={w.locked} />
                   </aside>
                 </motion.div>
               </TabsContent>
@@ -360,14 +351,20 @@ export function App() {
           </Tabs>
         </main>
         <footer>
-          <span>EPUB Toolkit · Apache-2.0</span>
-          <a
-            href="https://github.com/yumizhi/lightweight_epub_merge_tool#readme"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {copy.guide}
-          </a>
+          <div className="footer-info">
+            <span>{copy.privacyHint}</span>
+            <PwaStatus copy={copy} locked={w.locked} />
+          </div>
+          <div className="footer-links">
+            <span>Apache-2.0</span>
+            <a
+              href="https://github.com/yumizhi/lightweight_epub_merge_tool#readme"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {copy.guide}
+            </a>
+          </div>
         </footer>
         <Toaster theme={dark ? "dark" : "light"} closeButton />
       </div>
