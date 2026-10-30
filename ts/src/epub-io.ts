@@ -2,6 +2,7 @@ import { builder, localKey, parseXml } from "./xml.js";
 import { InvalidEpubError, ManifestError } from "./errors.js";
 import type {
   InputFile,
+  PackageMetadata,
   ManifestItem,
   SourceBook,
   TocEntry,
@@ -60,6 +61,33 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     `${basename}: missing spine`,
   );
 
+  const metaNodes = asArray(localKey(metadata, "meta")) as Array<
+    Record<string, unknown>
+  >;
+  if (
+    metaNodes.some(
+      (node) =>
+        node["@_property"] === "rendition:layout" &&
+        textValue(node) === "pre-paginated",
+    ) ||
+    asArray(localKey(spineNode, "itemref")).some((node) =>
+      (stringAttr(node as Record<string, unknown>, "properties") ?? "")
+        .split(/\s+/)
+        .includes("rendition:layout-pre-paginated"),
+    )
+  )
+    throw new InvalidEpubError(
+      `${basename}: fixed-layout EPUBs are not supported`,
+    );
+  if (
+    asArray(localKey(manifestNode, "item")).some(
+      (node) => !!(node as Record<string, unknown>)["@_media-overlay"],
+    )
+  )
+    throw new InvalidEpubError(
+      `${basename}: EPUB media overlays are not supported`,
+    );
+
   const title =
     textValue(localKey(metadata, "title")) ?? basename.replace(/\.epub$/i, "");
   const language = textValue(localKey(metadata, "language")) ?? "en";
@@ -83,6 +111,45 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     return { id, href, mediaType, properties };
   });
 
+  const coverId = asArray(localKey(metadata, "meta")).find(
+    (value) =>
+      value &&
+      typeof value === "object" &&
+      (value as Record<string, unknown>)["@_name"] === "cover",
+  ) as Record<string, unknown> | undefined;
+  const cover = items.find((item) => item.id === coverId?.["@_content"]);
+  if (cover && !cover.properties.includes("cover-image"))
+    cover.properties.push("cover-image");
+  const identifierId = stringAttr(opfRoot, "unique-identifier");
+  const identifiers = asArray(localKey(metadata, "identifier"));
+  const identifier =
+    identifiers.find(
+      (value) =>
+        value &&
+        typeof value === "object" &&
+        (value as Record<string, unknown>)["@_id"] === identifierId,
+    ) ?? identifiers[0];
+  const packageMetadata: PackageMetadata = {
+    identifier: textValue(identifier),
+    publisher: textValue(localKey(metadata, "publisher")),
+    description: textValue(localKey(metadata, "description")),
+    rights: textValue(localKey(metadata, "rights")),
+    date: textValue(localKey(metadata, "date")),
+    subjects: asArray(localKey(metadata, "subject"))
+      .map(textValue)
+      .filter((v): v is string => !!v),
+    pageProgressionDirection: stringAttr(
+      spineNode,
+      "page-progression-direction",
+    ),
+    spine: asArray(localKey(spineNode, "itemref")).map((value) => {
+      const node = value as Record<string, unknown>;
+      return {
+        linear: stringAttr(node, "linear"),
+        properties: stringAttr(node, "properties"),
+      };
+    }),
+  };
   const names = metadataOnly ? zipNames(input.data) : undefined;
   if (new Set(items.map((item) => item.id)).size !== items.length)
     throw new InvalidEpubError(`${basename}: duplicate manifest IDs`);
@@ -137,6 +204,7 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
     spineIds,
     toc,
     itemData,
+    packageMetadata,
   };
 }
 
@@ -148,7 +216,7 @@ export function baseZipEntries(opfPath = "OEBPS/content.opf"): ZipEntry[] {
       data: utf8Encode(`<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="${escapeXml(opfPath)}" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="${escapeXml(encodePath(opfPath))}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>
 `),
@@ -163,6 +231,7 @@ export function buildOpf(
   items: ManifestItem[],
   spineIds: string[],
   navHref = "nav-merged.xhtml",
+  metadata: PackageMetadata = {},
 ): Uint8Array {
   let navId = "nav";
   while (items.some((item) => item.id === navId)) navId = "_" + navId;
@@ -185,12 +254,23 @@ export function buildOpf(
         "@_xmlns:dc": "http://purl.org/dc/elements/1.1/",
         "dc:identifier": {
           "@_id": "bookid",
-          "#text": `urn:uuid:${crypto.randomUUID()}`,
+          "#text": metadata.identifier ?? `urn:uuid:${crypto.randomUUID()}`,
         },
         meta: {
           "@_property": "dcterms:modified",
           "#text": new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
         },
+        ...Object.fromEntries(
+          ["publisher", "description", "rights", "date"]
+            .filter((key) => metadata[key as keyof PackageMetadata])
+            .map((key) => [
+              `dc:${key}`,
+              metadata[key as keyof PackageMetadata],
+            ]),
+        ),
+        ...(metadata.subjects?.length
+          ? { "dc:subject": metadata.subjects }
+          : {}),
         "dc:title": title,
         "dc:language": language,
         ...(creators.length ? { "dc:creator": creators } : {}),
@@ -207,7 +287,20 @@ export function buildOpf(
         ],
       },
       spine: {
-        itemref: spineIds.map((id) => ({ "@_idref": id })),
+        ...(metadata.pageProgressionDirection
+          ? {
+              "@_page-progression-direction": metadata.pageProgressionDirection,
+            }
+          : {}),
+        itemref: spineIds.map((id, index) => ({
+          "@_idref": id,
+          ...(metadata.spine?.[index]?.linear
+            ? { "@_linear": metadata.spine[index].linear }
+            : {}),
+          ...(metadata.spine?.[index]?.properties
+            ? { "@_properties": metadata.spine[index].properties }
+            : {}),
+        })),
       },
     },
   };
@@ -251,7 +344,9 @@ function tocList(entries: TocEntry[]): string {
       if (depth > previous) html += "<ol>";
       else html += "</li>" + "</ol></li>".repeat(previous - depth);
     }
-    html += `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>`;
+    html += entry.href
+      ? `<li><a href="${escapeXml(entry.href)}">${escapeXml(entry.title)}</a>`
+      : `<li><span>${escapeXml(entry.title)}</span>`;
     previous = depth;
   });
   return html + (entries.length ? "</li>" + "</ol></li>".repeat(previous) : "");
@@ -293,7 +388,10 @@ function readOpfPath(zip: Pick<Map<string, Uint8Array>, "get">): string {
     asArray(localKey(rootfiles, "rootfile"))[0],
     "missing rootfile",
   );
-  return attr(rootfile, "full-path", "rootfile missing full-path");
+  return resolvePath(
+    "",
+    attr(rootfile, "full-path", "rootfile missing full-path"),
+  );
 }
 
 function readToc(
@@ -337,6 +435,7 @@ function relativeToc(
   tocPath: string,
 ): TocEntry[] {
   return entries.map((entry) => {
+    if (!entry.href) return entry;
     const index = entry.href.search(/[?#]/);
     const suffix = index < 0 ? "" : entry.href.slice(index);
     return {
@@ -345,7 +444,7 @@ function relativeToc(
         encodePath(
           relPosix(
             opfDir,
-            entry.href.startsWith("#")
+            /^[?#]/.test(entry.href)
               ? tocPath
               : resolvePath(dirnamePosix(tocPath), entry.href),
           ),
@@ -367,50 +466,102 @@ function findNcx(
   );
 }
 
+type OrderedNode = Record<string, unknown>;
+function orderedChildren(node: OrderedNode, name: string): OrderedNode[] {
+  const key = Object.keys(node).find((key) => localName(key) === name);
+  return key && Array.isArray(node[key]) ? (node[key] as OrderedNode[]) : [];
+}
+function orderedText(nodes: OrderedNode[]): string {
+  return nodes
+    .map((node) =>
+      typeof node["#text"] === "string"
+        ? node["#text"]
+        : Object.keys(node)
+            .filter((key) => key !== ":@")
+            .map((key) =>
+              Array.isArray(node[key])
+                ? orderedText(node[key] as OrderedNode[])
+                : "",
+            )
+            .join(""),
+    )
+    .join("");
+}
+function walkOrdered(
+  nodes: OrderedNode[],
+  cb: (
+    name: string,
+    children: OrderedNode[],
+    attrs: Record<string, string>,
+    depth: number,
+  ) => void,
+  depth = 0,
+): void {
+  for (const node of nodes) {
+    for (const [key, value] of Object.entries(node)) {
+      if (!Array.isArray(value)) continue;
+      const name = localName(key);
+      const next = depth + (["ol", "navPoint"].includes(name) ? 1 : 0);
+      cb(name, value, (node[":@"] ?? {}) as Record<string, string>, next);
+      walkOrdered(value, cb, next);
+    }
+  }
+}
+function orderedDocument(data: Uint8Array): OrderedNode[] {
+  // Reuse XML validation, then preserve mixed text order in navigation labels.
+  return parseXml(data, true) as OrderedNode[];
+}
 function parseNav(data: Uint8Array, basename: string): TocEntry[] {
-  const root = parseXml(data);
-  const navs: Record<string, unknown>[] = [];
-  visit(root, (nodeName, node) => {
-    if (localName(nodeName) === "nav") navs.push(node);
+  const navs: Array<{ children: OrderedNode[]; type: string }> = [];
+  walkOrdered(orderedDocument(data), (name, children, attrs) => {
+    if (name === "nav")
+      navs.push({
+        children,
+        type: attrs["@_epub:type"] ?? attrs["@_type"] ?? "",
+      });
   });
   const toc =
-    navs.find((node) =>
-      String(node["@_epub:type"] ?? node["@_type"] ?? "").includes("toc"),
-    ) ?? navs[0];
+    navs.find((nav) => nav.type.split(/\s+/).includes("toc")) ?? navs[0];
   if (!toc)
     throw new InvalidEpubError(`${basename}: nav file has no nav element`);
   const entries: TocEntry[] = [];
-  visit(toc, (nodeName, node, depth) => {
-    if (localName(nodeName) === "a" && typeof node["@_href"] === "string") {
-      const title = collectText(node).trim();
-      if (title)
-        entries.push({
-          title,
-          href: node["@_href"],
-          ...(depth > 1 ? { depth: depth - 1 } : {}),
-        });
-    }
+  walkOrdered(toc.children, (name, children, _, depth) => {
+    if (name !== "li") return;
+    const label = children.find((node) =>
+      Object.keys(node).some((key) => ["a", "span"].includes(localName(key))),
+    );
+    if (!label) return;
+    const title = orderedText(
+      orderedChildren(label, "a").length
+        ? orderedChildren(label, "a")
+        : orderedChildren(label, "span"),
+    ).trim();
+    const attrs = (label[":@"] ?? {}) as Record<string, string>;
+    if (title)
+      entries.push({
+        title,
+        href: attrs["@_href"] ?? "",
+        ...(depth > 1 ? { depth: depth - 1 } : {}),
+      });
   });
-  if (!entries.length)
+  if (!entries.some((entry) => entry.href))
     throw new InvalidEpubError(`${basename}: nav file has no TOC links`);
   return entries;
 }
-
 function parseNcx(data: Uint8Array, basename: string): TocEntry[] {
-  const root = parseXml(data);
   const entries: TocEntry[] = [];
-  visit(root, (nodeName, node, depth) => {
-    if (localName(nodeName) !== "navPoint") return;
-    const label = firstDescendantValue(node, "text");
-    const content = firstDescendantValue(node, "content");
-    const title = label ? collectText(label).trim() : "";
-    const href =
-      content &&
-      typeof content === "object" &&
-      !Array.isArray(content) &&
-      typeof (content as Record<string, unknown>)["@_src"] === "string"
-        ? String((content as Record<string, unknown>)["@_src"])
-        : "";
+  walkOrdered(orderedDocument(data), (name, children, _, depth) => {
+    if (name !== "navPoint") return;
+    const label = children.find(
+      (node) => orderedChildren(node, "navLabel").length,
+    );
+    const content = children.find((node) =>
+      Object.keys(node).some((key) => localName(key) === "content"),
+    );
+    const title = label
+      ? orderedText(orderedChildren(label, "navLabel")).trim()
+      : "";
+    const href = ((content?.[":@"] ?? {}) as Record<string, string>)["@_src"];
     if (title && href)
       entries.push({ title, href, ...(depth > 1 ? { depth: depth - 1 } : {}) });
   });
@@ -467,68 +618,6 @@ function stringAttr(
 ): string | undefined {
   const value = node[`@_${name}`];
   return typeof value === "string" ? value : undefined;
-}
-
-function visit(
-  value: unknown,
-  cb: (nodeName: string, node: Record<string, unknown>, depth: number) => void,
-  depth = 0,
-): void {
-  if (!value || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) visit(item, cb, depth);
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  for (const [key, child] of Object.entries(obj)) {
-    if (key.startsWith("@_") || key === "#text") continue;
-    if (child && typeof child === "object") {
-      for (const node of asArray(
-        child as Record<string, unknown> | Record<string, unknown>[],
-      )) {
-        const nextDepth =
-          depth + (["ol", "navPoint"].includes(localName(key)) ? 1 : 0);
-        cb(key, node, nextDepth);
-        visit(node, cb, nextDepth);
-      }
-    }
-  }
-}
-
-function firstDescendantValue(
-  node: Record<string, unknown>,
-  desired: string,
-): unknown {
-  for (const [key, value] of Object.entries(node)) {
-    if (localName(key) === desired)
-      return Array.isArray(value) ? value[0] : value;
-    if (value && typeof value === "object") {
-      const values = Array.isArray(value) ? value : [value];
-      for (const child of values) {
-        if (child && typeof child === "object") {
-          const found = firstDescendantValue(
-            child as Record<string, unknown>,
-            desired,
-          );
-          if (found !== undefined) return found;
-        }
-      }
-    }
-  }
-  return undefined;
-}
-
-function collectText(value: unknown): string {
-  if (typeof value === "string" || typeof value === "number")
-    return String(value);
-  if (!value || typeof value !== "object") return "";
-  if (Array.isArray(value)) return value.map(collectText).join("");
-  const obj = value as Record<string, unknown>;
-  let out = typeof obj["#text"] === "string" ? obj["#text"] : "";
-  for (const [key, child] of Object.entries(obj)) {
-    if (!key.startsWith("@_") && key !== "#text") out += collectText(child);
-  }
-  return out;
 }
 
 function localName(key: string): string {

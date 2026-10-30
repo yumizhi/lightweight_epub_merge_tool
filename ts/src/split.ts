@@ -6,28 +6,69 @@ import {
   MERGE_MANIFEST_PATH,
   requireMergeManifest,
 } from "./epub-io.js";
-import type { SplitResult, TocEntry, ManifestItem } from "./models.js";
-import { resolvePath, rewriteReferences } from "./resources.js";
+import type {
+  SplitResult,
+  TocEntry,
+  ManifestItem,
+  PackageMetadata,
+  BlobResult,
+  ExecutionOptions,
+} from "./models.js";
+import { archivePath, resolvePath, rewriteReferences } from "./resources.js";
 import { dirnamePosix, safeBasename } from "./utils.js";
-import { readZip, writeZip, type ZipEntry } from "./zip.js";
+import { createZipOutput, readZip, writeZip, type ZipEntry } from "./zip.js";
 
 export function splitEpub(input: Uint8Array): SplitResult[] {
-  const zip = readZip(input);
-  const manifestData = zip.get(MERGE_MANIFEST_PATH);
+  const sources = readSources(input);
+  return sources.map((source) => ({
+    name: safeBasename(String(source.basename)),
+    data: writeZip(splitSourceEntries(input, source)),
+  }));
+}
+
+export async function splitEpubFile(
+  input: Blob,
+  execution: ExecutionOptions = {},
+): Promise<BlobResult[]> {
+  const data = new Uint8Array(await input.arrayBuffer());
+  const sources = readSources(data);
+  const results: BlobResult[] = [];
+  for (const [index, source] of sources.entries()) {
+    const writer = createZipOutput();
+    for (const entry of splitSourceEntries(data, source)) {
+      execution.signal?.throwIfAborted();
+      writer.add(entry);
+    }
+    results.push({
+      name: safeBasename(String(source.basename)),
+      blob: new Blob(writer.finish(), { type: "application/epub+zip" }),
+    });
+    execution.onProgress?.({
+      phase: "restoring",
+      completed: index + 1,
+      total: sources.length,
+      file: String(source.basename),
+    });
+  }
+  return results;
+}
+function readSources(input: Uint8Array): Array<Record<string, unknown>> {
+  const manifestData = readZip(input, new Set([MERGE_MANIFEST_PATH])).get(
+    MERGE_MANIFEST_PATH,
+  );
   if (!manifestData)
     throw new ManifestError(
       "This EPUB has no merge record. Split requires a book merged with this tool.",
     );
-  const manifest = requireMergeManifest(manifestData);
-  const sources = manifest.sources as Array<Record<string, unknown>>;
-  return sources.map((source) => splitSource(zip, source));
+  return requireMergeManifest(manifestData).sources as Array<
+    Record<string, unknown>
+  >;
 }
 
-function splitSource(
-  mergedZip: Map<string, Uint8Array>,
+function* splitSourceEntries(
+  input: Uint8Array,
   source: Record<string, unknown>,
-): SplitResult {
-  const basename = safeBasename(String(source.basename));
+): Generator<ZipEntry> {
   const files = source.files as Array<Record<string, unknown>>;
   const spine = source.spine as string[];
   const toc = source.toc as TocEntry[];
@@ -43,7 +84,7 @@ function splitSource(
       (p) => p !== "nav",
     ),
   }));
-  const opfPath = resolvePath("", String(source.opf_path));
+  const opfPath = archivePath(String(source.opf_path));
   const opfDir = dirnamePosix(opfPath);
   let navHref = "epub-toolkit-nav.xhtml";
   while (
@@ -52,12 +93,12 @@ function splitSource(
     )
   )
     navHref = "_" + navHref;
-  const zipEntries: ZipEntry[] = baseZipEntries(opfPath);
-  zipEntries.push({
+  yield* baseZipEntries(opfPath);
+  yield {
     name: resolvePath(opfDir, navHref),
     data: buildFlatNav(String(source.title), toc[0]?.href ?? "#", toc),
-  });
-  zipEntries.push({
+  };
+  yield {
     name: opfPath,
     data: buildOpf(
       String(source.title),
@@ -66,12 +107,14 @@ function splitSource(
       items,
       spine,
       navHref,
+      (source.package_metadata ?? {}) as PackageMetadata,
     ),
-  });
+  };
   for (const file of files) {
     const mergedHref = String(file.merged_href);
     const originalHref = String(file.href);
-    const data = mergedZip.get(resolvePath("OEBPS", mergedHref));
+    const path = resolvePath("OEBPS", mergedHref);
+    const data = readZip(input, new Set([path])).get(path);
     if (!data)
       throw new ManifestError(
         `manifest references missing merged resource ${mergedHref}`,
@@ -87,10 +130,14 @@ function splitSource(
           (href) => reverse.get(href) ?? href,
         )
       : data;
-    zipEntries.push({
+    yield {
       name: resolvePath(opfDir, originalHref),
       data: restored,
-    });
+      level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(
+        String(file.media_type),
+      )
+        ? 0
+        : 6,
+    };
   }
-  return { name: basename, data: writeZip(zipEntries) };
 }

@@ -1,7 +1,11 @@
 import { readBookSummary } from "../../ts/src/epub-io.js";
-import { inspectEpub, mergeEpubs, splitEpub } from "../../ts/src/index.js";
+import {
+  inspectEpub,
+  mergeEpubFiles,
+  splitEpubFile,
+} from "../../ts/src/index.js";
 import { orderKey } from "../../ts/src/ordering.js";
-import { writeZip } from "../../ts/src/zip.js";
+import { archiveFiles } from "../../ts/src/zip.js";
 import type {
   WorkerFile,
   WorkerReply,
@@ -12,6 +16,21 @@ import type {
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   let response: WorkerResponse;
+  const onProgress = (
+    progress: import("../../ts/src/models.js").ProcessingProgress,
+  ) => {
+    if (
+      progress.phase === "resources" &&
+      progress.completed % 16 &&
+      progress.completed !== progress.total
+    )
+      return;
+    self.postMessage({
+      type: "progress",
+      progress,
+      requestId: request.requestId,
+    } satisfies WorkerReply);
+  };
   try {
     if (request.type === "analyze") {
       const source = readBookSummary(await readFile(request.file));
@@ -28,11 +47,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         orderKey: key,
       };
     } else if (request.type === "merge") {
-      const inputs = [];
-      for (const file of request.files) inputs.push(await readFile(file));
       response = {
         type: "merge",
-        ...mergeEpubs(request.outputName, inputs, request.options),
+        ...(await mergeEpubFiles(
+          request.outputName,
+          request.files,
+          request.options,
+          { onProgress },
+        )),
       };
     } else if (request.type === "inspect") {
       response = {
@@ -42,16 +64,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     } else if (request.type === "split") {
       response = {
         type: "split",
-        results: splitEpub((await readFile(request.file)).data),
+        results: await splitEpubFile(request.file.file, { onProgress }),
       };
     } else {
-      const entries = [];
-      for (const file of request.files)
-        entries.push({ ...(await readFile(file)), level: 0 as const });
       response = {
         type: "archive",
         name: "epub-volumes.zip",
-        data: writeZip(entries),
+        blob: await archiveFiles(request.files, onProgress),
       };
     }
   } catch (error) {
@@ -60,16 +79,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       message: error instanceof Error ? error.message : String(error),
     };
   }
-  const buffers: Transferable[] = [];
-  if (response.type === "merge" || response.type === "archive")
-    buffers.push(response.data.buffer as ArrayBuffer);
-  if (response.type === "split")
-    for (const file of response.results)
-      buffers.push(file.data.buffer as ArrayBuffer);
-  self.postMessage(
-    { ...response, requestId: request.requestId } satisfies WorkerReply,
-    { transfer: buffers },
-  );
+  // Blob structured cloning shares immutable backing storage. No ArrayBuffer
+  // result copy or full output concatenation is needed on the main thread.
+  self.postMessage({
+    ...response,
+    requestId: request.requestId,
+  } satisfies WorkerReply);
 };
 async function readFile(file: WorkerFile) {
   return {

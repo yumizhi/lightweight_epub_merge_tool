@@ -207,7 +207,22 @@ export function App() {
                           >
                             <LoaderCircle className="animate-spin" size={16} />
                             <span>
-                              {w.reading ? copy.reading : copy.working}
+                              {w.progress ? (
+                                <>
+                                  {copy.stages[w.progress.phase]}
+                                  {w.progress.phase !== "writing" &&
+                                    ` · ${w.progress.completed}/${w.progress.total}`}
+                                  {w.progress.file && (
+                                    <small className="task-file">
+                                      {w.progress.file}
+                                    </small>
+                                  )}
+                                </>
+                              ) : w.reading ? (
+                                copy.reading
+                              ) : (
+                                copy.working
+                              )}
                             </span>
                             <Button variant="ghost" size="sm" onClick={w.stop}>
                               <X />

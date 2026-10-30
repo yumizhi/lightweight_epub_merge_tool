@@ -19,16 +19,20 @@ jobs:
       - run: npm run verify
       - run: python -m pip install build
       - run: python -m build
-      - name: Check installed CLI
+      - run: npm run package:node
+      - name: Check installed release CLIs
         run: |
           python -m venv /tmp/epub-cli
           /tmp/epub-cli/bin/pip install dist/*.whl
-          /tmp/epub-cli/bin/epub-merge --help
+          npm install --prefix /tmp/epub-node ./dist/epub-toolkit-node-*.tgz
+          python scripts/check-release.py --python-cli /tmp/epub-cli/bin/epub-merge --node-cli /tmp/epub-node/node_modules/.bin/epub-toolkit
       - run: npm run build:web:pages
       - uses: actions/upload-artifact@v4
         with:
-          name: epub-toolkit-1.0.0
+          name: epub-toolkit-1.1.0
           path: |
             dist/*.whl
             dist/*.tar.gz
+            dist/*.tgz
+            CHANGELOG.md
             dist-web/

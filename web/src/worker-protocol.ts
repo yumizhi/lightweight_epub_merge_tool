@@ -1,4 +1,4 @@
-import type { MergeOptions } from "../../ts/src/models.js";
+import type { MergeOptions, ProcessingProgress } from "../../ts/src/models.js";
 import type { InspectReport } from "../../ts/src/inspect.js";
 export type WorkerFile = { name: string; file: Blob };
 export type WorkerTask =
@@ -15,8 +15,10 @@ export type WorkerTask =
 export type WorkerRequest = WorkerTask & { requestId: number };
 export type WorkerResponse =
   | { type: "analyze"; title: string; chapters: number; orderKey?: number[] }
-  | { type: "merge" | "archive"; name: string; data: Uint8Array }
-  | { type: "split"; results: { name: string; data: Uint8Array }[] }
+  | { type: "merge" | "archive"; name: string; blob: Blob }
+  | { type: "split"; results: { name: string; blob: Blob }[] }
   | { type: "inspect"; report: InspectReport }
   | { type: "error"; message: string };
-export type WorkerReply = WorkerResponse & { requestId: number };
+export type WorkerReply = (
+  WorkerResponse | { type: "progress"; progress: ProcessingProgress }
+) & { requestId: number };

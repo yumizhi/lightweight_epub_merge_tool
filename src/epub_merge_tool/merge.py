@@ -106,7 +106,11 @@ def merge_epubs(
                             properties=tuple(prop for prop in item.properties if prop != "nav" and (prop != "cover-image" or not has_cover)),
                         )
                     )
-                if "cover-image" in item.properties:
+                if "cover-image" in item.properties and not has_cover:
+                    for owner_index, owner in enumerate(manifest_items):
+                        if owner.href == output_href and "cover-image" not in owner.properties:
+                            manifest_items[owner_index] = ManifestItem(owner.item_id, owner.href, owner.media_type, (*owner.properties, "cover-image"))
+                            break
                     has_cover = True
                 id_map[item.item_id] = owner_id
                 file_records.append(
@@ -145,11 +149,11 @@ def merge_epubs(
             remapped_toc = [
                 TocEntry(entry.title, remap_reference(entry.href, source.opf_path, "nav-merged.xhtml", href_map), entry.depth) for entry in source.toc
             ]
-            if first_href == "#" and remapped_toc:
-                first_href = remapped_toc[0].href
-            source_href = remapped_toc[0].href if remapped_toc else "#"
+            source_href = next((entry.href for entry in remapped_toc if entry.href), "#")
+            if first_href == "#":
+                first_href = source_href
             source_tocs.append((source.title, source_href, remapped_toc))
-            flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc)
+            flat_toc.extend(TocEntry(entry.title, entry.href) for entry in remapped_toc if entry.href)
             manifest_sources.append(
                 {
                     "basename": source.basename,
@@ -158,6 +162,7 @@ def merge_epubs(
                     "language": source.language,
                     "creators": list(source.creators),
                     "opf_path": source.opf_path,
+                    "package_metadata": source.package_metadata,
                     "files": file_records,
                     "spine": list(source.spine_ids),
                     "toc": [{"title": entry.title, "href": entry.href, "depth": entry.depth} for entry in source.toc],
@@ -172,7 +177,7 @@ def merge_epubs(
         out.writestr("OEBPS/nav-merged.xhtml", nav, compress_type=zipfile.ZIP_DEFLATED)
         out.writestr(
             "OEBPS/content.opf",
-            build_opf(book_title, language, dict.fromkeys(creator for source in sources for creator in source.creators), manifest_items, spine_ids),
+            build_opf(book_title, language, dict.fromkeys(creator for source in sources for creator in source.creators), manifest_items, spine_ids, package_metadata={"pageProgressionDirection": sources[0].package_metadata.get("pageProgressionDirection"), "spine": [item for source in sources for item in source.package_metadata.get("spine", [])]}),
             compress_type=zipfile.ZIP_DEFLATED,
         )
         manifest = {

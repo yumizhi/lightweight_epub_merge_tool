@@ -10,6 +10,15 @@ export const parser = new XMLParser({
   trimValues: true,
 });
 
+export const orderedParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  preserveOrder: true,
+  parseTagValue: false,
+  parseAttributeValue: false,
+  trimValues: false,
+});
+
 export const builder = new XMLBuilder({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -18,12 +27,15 @@ export const builder = new XMLBuilder({
   suppressEmptyNode: false,
 });
 
-export function parseXml(data: Uint8Array | string): unknown {
+export function parseXml(
+  data: Uint8Array | string,
+  preserveOrder = false,
+): unknown {
   const text =
     typeof data === "string" ? data : new TextDecoder("utf-8").decode(data);
   const result = XMLValidator.validate(text);
   if (result !== true) throw new Error(`Invalid XML: ${result.err.msg}`);
-  return parser.parse(text) as unknown;
+  return (preserveOrder ? orderedParser : parser).parse(text) as unknown;
 }
 
 export function localKey(

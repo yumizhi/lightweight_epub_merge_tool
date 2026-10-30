@@ -16,7 +16,7 @@ from .epub_io import (
 )
 from .errors import EpubMergeError, ManifestError
 from .models import ManifestItem, TocEntry
-from .resources import resolve_path, rewrite_references
+from .resources import archive_path, resolve_path, rewrite_references
 
 
 def split_epub(input_path: Path | str, out_dir: Path | str, *, heuristic: bool = False) -> list[Path]:
@@ -63,7 +63,7 @@ def _split_from_manifest(zf: zipfile.ZipFile, manifest: dict, out_dir: Path) -> 
             for file_record in source["files"]
             if file_record["id"] in spine_ids
         }
-        opf_path = resolve_path("", source["opf_path"])
+        opf_path = archive_path(source["opf_path"])
         opf_dir = posixpath.dirname(opf_path)
         nav_href = "epub-toolkit-nav.xhtml"
         while any(resolve_path(opf_dir, item.href) == resolve_path(opf_dir, nav_href) for item in items):
@@ -89,6 +89,7 @@ def _split_from_manifest(zf: zipfile.ZipFile, manifest: dict, out_dir: Path) -> 
                     items,
                     [spine_hrefs[_href_for_id(source["files"], item_id)] for item_id in spine_ids],
                     nav_href=nav_href,
+                    package_metadata=source.get("package_metadata"),
                 ),
                 compress_type=zipfile.ZIP_DEFLATED,
             )

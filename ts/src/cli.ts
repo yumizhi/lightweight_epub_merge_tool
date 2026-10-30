@@ -1,12 +1,20 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  openAsBlob,
+  createWriteStream,
+} from "node:fs";
+import { join, basename } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 import { EpubMergeError } from "./errors.js";
 import { inspectEpub } from "./inspect.js";
-import { mergeEpubs } from "./merge.js";
+import { mergeEpubFiles } from "./merge.js";
 import { splitEpub } from "./split.js";
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
   if (
     ["--help", "-h"].includes(command) ||
@@ -17,7 +25,7 @@ function main(argv: string[]): number {
     return 0;
   }
   try {
-    if (command === "merge") return runMerge(args);
+    if (command === "merge") return await runMerge(args);
     if (command === "inspect") return runInspect(args);
     if (command === "split") return runSplit(args);
     usage();
@@ -31,7 +39,7 @@ function main(argv: string[]): number {
   }
 }
 
-function runMerge(args: string[]): number {
+async function runMerge(args: string[]): Promise<number> {
   let title: string | undefined;
   let structure: "volume" | "flat" = "volume";
   let inputOrder = false;
@@ -52,12 +60,19 @@ function runMerge(args: string[]): number {
   if (rest.length < 2)
     throw new EpubMergeError("merge requires OUTPUT and INPUT...");
   const [output, ...inputs] = rest;
-  const result = mergeEpubs(
-    output,
-    inputs.map((name) => ({ name, data: readFileSync(name) })),
+  const result = await mergeEpubFiles(
+    basename(output),
+    await Promise.all(
+      inputs.map(async (name) => ({ name, file: await openAsBlob(name) })),
+    ),
     { title, structure, inputOrder },
   );
-  writeFileSync(output, result.data);
+  await pipeline(
+    Readable.fromWeb(
+      result.blob.stream() as import("node:stream/web").ReadableStream<Uint8Array>,
+    ),
+    createWriteStream(output),
+  );
   return 0;
 }
 
@@ -87,8 +102,8 @@ function runSplit(args: string[]): number {
 }
 
 function usage(): void {
-  console.log(`EPUB Toolkit 1.0.0
-usage: node dist-ts/src/cli.js COMMAND
+  console.log(`EPUB Toolkit 1.1.0
+usage: epub-toolkit COMMAND
   merge OUTPUT INPUT... [--title TITLE] [--structure volume|flat] [--input-order]
   split INPUT --out-dir DIR
   inspect INPUT
@@ -96,4 +111,4 @@ usage: node dist-ts/src/cli.js COMMAND
 Split reconstructs source volumes from EPUBs merged with this tool.`);
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

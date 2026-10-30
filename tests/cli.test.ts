@@ -3,7 +3,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { input } from "./fixtures.js";
+import { compatibilityBook, input } from "./fixtures.js";
+import { readZip, writeZip } from "../ts/src/zip.js";
 import { mergeEpubs, readSourceBook, splitEpub } from "../ts/src/index.js";
 const python =
   process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
@@ -72,4 +73,128 @@ describe("Python CLI interoperability", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30000);
+});
+
+it("restores package metadata and literal archive paths in both CLI directions", () => {
+  const dir = mkdtempSync(join(tmpdir(), "epub-compat-cli-"));
+  try {
+    const books = [compatibilityBook(1), compatibilityBook(2, 2)];
+    for (const book of books) writeFileSync(join(dir, book.name), book.data);
+    const path = join(dir, "collection.epub");
+    cli("merge", path, ...books.map((book) => join(dir, book.name)));
+    const fromPython = splitEpub(readFileSync(path));
+    for (const book of fromPython.map(readSourceBook)) {
+      expect(book.packageMetadata?.publisher).toBe("出版社");
+      expect(book.packageMetadata?.pageProgressionDirection).toBe("rtl");
+      expect(book.packageMetadata?.spine?.[0].linear).toBe("no");
+    }
+    writeFileSync(path, mergeEpubs("collection.epub", books).data);
+    cli("split", path, "--out-dir", join(dir, "split"));
+    for (const book of books) {
+      const restored = readSourceBook({
+        name: book.name,
+        data: readFileSync(join(dir, "split", book.name)),
+      });
+      expect(restored.packageMetadata?.identifier).toBe(
+        readSourceBook(book).packageMetadata?.identifier,
+      );
+      expect(restored.packageMetadata?.rights).toBe("CC0 test fixture");
+      expect(
+        restored.itemData.get("../Images/%E6%8F%92%E5%9B%BE%20%231.png"),
+      ).toEqual(
+        readSourceBook(book).itemData.get(
+          "../Images/%E6%8F%92%E5%9B%BE%20%231.png",
+        ),
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it("preserves query-only self links in Python/TypeScript reconstruction", () => {
+  const dir = mkdtempSync(join(tmpdir(), "epub-query-cli-"));
+  try {
+    const book = input(1),
+      zip = readZip(book.data);
+    const chapterPath = "OEBPS/Text/chapter.xhtml";
+    zip.set(
+      chapterPath,
+      new TextEncoder().encode(
+        new TextDecoder()
+          .decode(zip.get(chapterPath))
+          .replace(
+            "</body>",
+            '<a href="?view=reader#start">Read here</a></body>',
+          ),
+      ),
+    );
+    book.data = writeZip(
+      [...zip].map(([name, data]) => ({
+        name,
+        data,
+        level: name === "mimetype" ? 0 : 6,
+      })),
+    );
+    const sourcePath = join(dir, book.name),
+      mergedPath = join(dir, "merged.epub");
+    writeFileSync(sourcePath, book.data);
+    cli("merge", mergedPath, sourcePath, "--input-order");
+    const restored = readSourceBook(splitEpub(readFileSync(mergedPath))[0]);
+    expect(
+      new TextDecoder().decode(restored.itemData.get("Text/chapter.xhtml")),
+    ).toContain('href="?view=reader#start"');
+    writeFileSync(
+      mergedPath,
+      mergeEpubs("merged.epub", [book], { inputOrder: true }).data,
+    );
+    cli("split", mergedPath, "--out-dir", join(dir, "recovered"));
+    const reverse = readSourceBook({
+      name: book.name,
+      data: readFileSync(join(dir, "recovered", book.name)),
+    });
+    expect(
+      new TextDecoder().decode(reverse.itemData.get("Text/chapter.xhtml")),
+    ).toContain('href="?view=reader#start"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+it("rejects per-spine fixed-layout overrides in both implementations", () => {
+  const dir = mkdtempSync(join(tmpdir(), "epub-layout-cli-"));
+  try {
+    const book = input(1),
+      zip = readZip(book.data);
+    zip.set(
+      "OEBPS/content.opf",
+      new TextEncoder().encode(
+        new TextDecoder()
+          .decode(zip.get("OEBPS/content.opf"))
+          .replace(
+            '<itemref idref="chapter"',
+            '<itemref properties="rendition:layout-pre-paginated" idref="chapter"',
+          ),
+      ),
+    );
+    book.data = writeZip(
+      [...zip].map(([name, data]) => ({
+        name,
+        data,
+        level: name === "mimetype" ? 0 : 6,
+      })),
+    );
+    expect(() => readSourceBook(book)).toThrow(/fixed-layout/);
+    const path = join(dir, book.name);
+    writeFileSync(path, book.data);
+    const result = spawnSync(
+      python,
+      ["-m", "epub_merge_tool", "inspect", path],
+      { env, encoding: "utf8" },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("fixed-layout");
+    expect(result.stderr).not.toContain("Traceback");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
