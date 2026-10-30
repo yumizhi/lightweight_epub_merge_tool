@@ -46,7 +46,7 @@ npm run preview:web
 
 The **Deploy Web UI to GitHub Pages** workflow is manual. It checks and builds the app at `/lightweight_epub_merge_tool/`, then deploys `dist-web/`. The Worker, icons, manifest, and service worker use this same base path.
 
-To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. The **Deploy v1 preview** workflow builds this branch at `/lightweight_epub_merge_tool/preview/` and keeps the current `main` application at the root URL. Updates to `feat/epub-toolkit-v1` refresh that preview. The main branch is not merged by either workflow.
+To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages → Run workflow**. Use the Pages URL returned by that run. The repository's current `github-pages` environment restricts deployments to approved branches. A feature branch must meet those environment rules before it can deploy there. Review and merge the source changes before updating the main site; a separate preview can be hosted independently.
 
 ## Python CLI
 
