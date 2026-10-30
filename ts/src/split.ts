@@ -45,6 +45,7 @@ function splitSource(mergedZip: Map<string, Uint8Array>, source: Record<string, 
 }
 
 function reverseRewrite(data: Uint8Array, mapping: Record<string, string>): Uint8Array {
+  if (!Object.keys(mapping).length) return data;
   let text = utf8Decode(data);
   for (const [oldHref, newHref] of Object.entries(mapping)) {
     text = text
