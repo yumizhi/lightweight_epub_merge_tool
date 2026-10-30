@@ -32,11 +32,13 @@ def resolve_path(base: str, href: str) -> str:
 def remap_reference(href: str, source_path: str, output_path: str, paths: dict[str, str]) -> str:
     if not href or href.startswith("#") or is_external(href):
         return href
-    target = resolve_path(posixpath.dirname(source_path), href)
+    target = source_path if href.startswith("?") else resolve_path(posixpath.dirname(source_path), href)
     if target not in paths:
         raise InvalidEpubError(f"{source_path}: reference points to a missing resource: {href}")
     suffix = re.search(r"[?#].*$", href)
     relative = posixpath.relpath(unquote(paths[target]), posixpath.dirname(output_path) or ".")
+    if posixpath.relpath(target, posixpath.dirname(source_path) or ".") == relative:
+        return href
     return quote(relative, safe="/") + (suffix.group() if suffix else "")
 
 

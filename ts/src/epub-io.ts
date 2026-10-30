@@ -69,6 +69,11 @@ function parseBook(input: InputFile, metadataOnly: boolean): SourceBook {
       (node) =>
         node["@_property"] === "rendition:layout" &&
         textValue(node) === "pre-paginated",
+    ) ||
+    asArray(localKey(spineNode, "itemref")).some((node) =>
+      (stringAttr(node as Record<string, unknown>, "properties") ?? "")
+        .split(/\s+/)
+        .includes("rendition:layout-pre-paginated"),
     )
   )
     throw new InvalidEpubError(
