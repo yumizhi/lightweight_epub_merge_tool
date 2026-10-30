@@ -1,5 +1,5 @@
-export { mergeEpubs } from "./merge.js";
-export { splitEpub } from "./split.js";
+export { mergeEpubs, mergeEpubFiles } from "./merge.js";
+export { splitEpub, splitEpubFile } from "./split.js";
 export { inspectEpub } from "./inspect.js";
 export { readSourceBook, readBookSummary } from "./epub-io.js";
 export { sortSources, orderKey } from "./ordering.js";

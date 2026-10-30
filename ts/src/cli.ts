@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, openAsBlob } from "node:fs";
 import { join } from "node:path";
 import { EpubMergeError } from "./errors.js";
 import { inspectEpub } from "./inspect.js";
-import { mergeEpubs } from "./merge.js";
+import { mergeEpubFiles } from "./merge.js";
 import { splitEpub } from "./split.js";
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
   if (
     ["--help", "-h"].includes(command) ||
@@ -17,7 +17,7 @@ function main(argv: string[]): number {
     return 0;
   }
   try {
-    if (command === "merge") return runMerge(args);
+    if (command === "merge") return await runMerge(args);
     if (command === "inspect") return runInspect(args);
     if (command === "split") return runSplit(args);
     usage();
@@ -31,7 +31,7 @@ function main(argv: string[]): number {
   }
 }
 
-function runMerge(args: string[]): number {
+async function runMerge(args: string[]): Promise<number> {
   let title: string | undefined;
   let structure: "volume" | "flat" = "volume";
   let inputOrder = false;
@@ -52,12 +52,12 @@ function runMerge(args: string[]): number {
   if (rest.length < 2)
     throw new EpubMergeError("merge requires OUTPUT and INPUT...");
   const [output, ...inputs] = rest;
-  const result = mergeEpubs(
+  const result = await mergeEpubFiles(
     output,
-    inputs.map((name) => ({ name, data: readFileSync(name) })),
+    await Promise.all(inputs.map(async (name) => ({ name, file: await openAsBlob(name) }))),
     { title, structure, inputOrder },
   );
-  writeFileSync(output, result.data);
+  writeFileSync(output, new Uint8Array(await result.blob.arrayBuffer()));
   return 0;
 }
 
@@ -96,4 +96,4 @@ usage: node dist-ts/src/cli.js COMMAND
 Split reconstructs source volumes from EPUBs merged with this tool.`);
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

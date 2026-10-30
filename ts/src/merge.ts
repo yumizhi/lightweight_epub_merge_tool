@@ -5,7 +5,6 @@ import {
   buildOpf,
   buildVolumeNav,
   MERGE_MANIFEST_PATH,
-  readSourceBook,
   readBookSummary,
 } from "./epub-io.js";
 import type {
@@ -14,9 +13,13 @@ import type {
   MergeOptions,
   MergeResult,
   TocEntry,
+  SourceBook,
+  BlobInput,
+  BlobResult,
+  ExecutionOptions,
 } from "./models.js";
 import { safeBasename, sha256, utf8Encode } from "./utils.js";
-import { writeZip, type ZipEntry } from "./zip.js";
+import { createZipOutput, joinChunks, readZip, type ZipEntry } from "./zip.js";
 import {
   encodePath,
   resolvePath,
@@ -38,29 +41,77 @@ const IMAGE_FONT_TYPES = new Set([
   "application/x-font-truetype",
 ]);
 
-export function mergeEpubs(
-  outputName: string,
-  inputs: InputFile[],
-  options: MergeOptions = {},
-): MergeResult {
+export function mergeEpubs(outputName: string, inputs: InputFile[], options: MergeOptions = {}): MergeResult {
+  const output = createZipOutput();
+  const job = mergeEntries(outputName, inputs.map((input) => input.name), options);
+  let next = job.next();
+  while (!next.done) {
+    if (typeof next.value === "number") next = job.next(inputs[next.value]);
+    else { output.add(next.value); next = job.next(); }
+  }
+  return { name: outputName, data: joinChunks(output.finish()) };
+}
+
+// Blob inputs are loaded one at a time, inside the Worker or the caller's runtime.
+// The synchronous API and this entry point consume exactly the same merge plan.
+export async function mergeEpubFiles(outputName: string, inputs: BlobInput[], options: MergeOptions = {}, execution: ExecutionOptions = {}): Promise<BlobResult> {
+  const output = createZipOutput();
+  const job = mergeEntries(outputName, inputs.map((input) => input.name), options, execution);
+  let next = job.next();
+  while (!next.done) {
+    execution.signal?.throwIfAborted();
+    if (typeof next.value === "number") {
+      const file = inputs[next.value];
+      next = job.next({ name: file.name, data: new Uint8Array(await file.file.arrayBuffer()) });
+    } else { output.add(next.value); next = job.next(); }
+  }
+  return { name: outputName, blob: new Blob(output.finish(), { type: "application/epub+zip" }) };
+}
+
+interface PlannedResource {
+  item: ManifestItem;
+  sourcePath: string;
+  targetHref: string;
+  canonicalHref: string;
+  action: "copy" | "rewrite" | "deduplicate";
+  level: 0 | 6;
+}
+function planSource(source: SourceBook, index: number) {
+  const resources: PlannedResource[] = source.manifestItems.filter((item) => item.mediaType !== "application/x-dtbncx+xml").map((item) => {
+    const sourcePath = resolvePath(source.opfDir, item.href);
+    const targetHref = encodePath(`v${index + 1}/${sourcePath}`);
+    return { item, sourcePath, targetHref, canonicalHref: targetHref, action: "copy", level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(item.mediaType) ? 0 : 6 };
+  });
+  return { resources, paths: new Map(resources.map((resource) => [resource.sourcePath, resource.targetHref])) };
+}
+function readResource(input: InputFile, path: string): Uint8Array {
+  const data = readZip(input.data, new Set([path])).get(path);
+  if (!data) throw new EpubMergeError(`${input.name}: missing resource ${path}`);
+  return data;
+}
+
+function* mergeEntries(outputName: string, names: string[], options: MergeOptions, execution: ExecutionOptions = {}): Generator<ZipEntry | number, void, InputFile | undefined> {
   const structure = options.structure ?? "volume";
   if (structure !== "volume" && structure !== "flat")
     throw new EpubMergeError("structure must be 'volume' or 'flat'");
-  if (!inputs.length)
+  if (!names.length)
     throw new EpubMergeError("At least one input EPUB is required");
 
-  rejectDuplicateBasenames(inputs);
-  const inputByName = new Map(
-    inputs.map((input) => [safeBasename(input.name), input]),
-  );
-  const orderedInputs = options.inputOrder
-    ? inputs
-    : sortSources(inputs.map(readBookSummary)).map(
-        (summary) => inputByName.get(summary.basename)!,
-      );
+  rejectDuplicateBasenames(names.map((name) => ({ name })));
+  const summaries = new Map<number, SourceBook>();
+  let order = names.map((_, index) => index);
+  if (!options.inputOrder) {
+    for (const index of order) {
+      execution.onProgress?.({ phase: "reading", completed: index, total: names.length, file: names[index] });
+      const input = (yield index)!;
+      summaries.set(index, readBookSummary(input));
+    }
+    const byName = new Map(names.map((name, index) => [safeBasename(name), index]));
+    order = sortSources([...summaries.values()]).map((source) => byName.get(source.basename)!);
+  }
 
   const title = options.title ?? outputName.replace(/\.epub$/i, "");
-  const zipEntries: ZipEntry[] = baseZipEntries();
+  yield* baseZipEntries();
   const outputItems: ManifestItem[] = [];
   const spineIds: string[] = [];
   const resourcePool = new Map<string, string>();
@@ -77,38 +128,44 @@ export function mergeEpubs(
   const spineProperties: NonNullable<import("./models.js").PackageMetadata["spine"]> = [];
   let pageProgressionDirection: string | undefined;
 
-  orderedInputs.forEach((input, sourceIndex) => {
-    // Explicit input order needs no metadata prepass.
-    const source = readSourceBook(input);
+  for (const [sourceIndex, inputIndex] of order.entries()) {
+    execution.onProgress?.({ phase: "reading", completed: sourceIndex, total: order.length, file: names[inputIndex] });
+    const input = (yield inputIndex)!;
+    const source = summaries.get(inputIndex) ?? readBookSummary(input);
+    const plan = planSource(source, sourceIndex);
+    const hrefMap = plan.paths;
+    let completed = 0;
+    const progress = () => execution.onProgress?.({ phase: "resources", completed, total: plan.resources.length, file: source.basename });
     if (sourceIndex === 0) {
       language = source.language;
       pageProgressionDirection = source.packageMetadata?.pageProgressionDirection;
     }
     spineProperties.push(...source.spineIds.map((_, index) => source.packageMetadata?.spine?.[index] ?? {}));
     for (const creator of source.creators) creators.add(creator);
-    const prefix = `v${sourceIndex + 1}/`;
-    const hrefMap = new Map<string, string>();
     const idMap = new Map<string, string>();
     const fileRecords: Record<string, unknown>[] = [];
     const rewrites: Record<string, Record<string, string>> = {};
 
-    for (const item of source.manifestItems) {
-      if (item.mediaType === "application/x-dtbncx+xml") continue;
-      const data = source.itemData.get(item.href);
-      if (!data)
-        throw new EpubMergeError(
-          `${source.basename}: missing item data ${item.href}`,
-        );
-      const preferred = encodePath(
-        `${prefix}${resolvePath(source.opfDir, item.href)}`,
-      );
-      let finalHref = preferred;
+    // Binary resources cannot contain local references. Resolve their pooling
+    // before processing documents, and write each unique resource immediately.
+    for (const resource of plan.resources) {
+      const item = resource.item;
+      let finalHref = resource.targetHref;
       if (canPool(item.mediaType)) {
+        const data = readResource(input, resource.sourcePath);
         const key = `${item.mediaType.toLowerCase()}:${sha256(data)}`;
-        finalHref = resourcePool.get(key) ?? preferred;
+        finalHref = resourcePool.get(key) ?? finalHref;
         resourcePool.set(key, finalHref);
+        resource.canonicalHref = finalHref;
+        resource.action = finalHref === resource.targetHref ? "copy" : "deduplicate";
+        hrefMap.set(resource.sourcePath, resource.canonicalHref);
+        const name = `OEBPS/${decodeURIComponent(finalHref)}`;
+        if (resource.action !== "deduplicate" && !written.has(name)) {
+          written.add(name);
+          yield { name, data, level: resource.level };
+        }
+        completed++; progress();
       }
-      hrefMap.set(resolvePath(source.opfDir, item.href), finalHref);
       const newId = `s${sourceIndex}_${item.id}`;
       let ownerId = manifestHrefIds.get(finalHref);
       if (!ownerId) {
@@ -139,42 +196,20 @@ export function mergeEpubs(
       });
     }
 
-    // A uniform directory prefix preserves every relative reference. Only
-    // pooled resources can require rewriting the source documents.
-    for (const item of source.manifestItems) {
-      if (item.mediaType === "application/x-dtbncx+xml") continue;
-      let data = source.itemData.get(item.href);
-      if (!data)
-        throw new EpubMergeError(
-          `${source.basename}: missing item data ${item.href}`,
-        );
-      const originalPath = resolvePath(source.opfDir, item.href);
-      const finalHref = hrefMap.get(originalPath)!;
+    for (const resource of plan.resources) {
+      const item = resource.item;
+      if (canPool(item.mediaType)) continue;
+      const original = readResource(input, resource.sourcePath);
       const rewriteMap: Record<string, string> = {};
-      data = rewriteReferences(data, item.mediaType, (href) => {
-          const result = remapReference(
-            href,
-            originalPath,
-            decodeURIComponent(finalHref),
-            hrefMap,
-          );
-          if (result !== href) rewriteMap[href] = result;
-          return result;
-        });
+      const data = rewriteReferences(original, item.mediaType, (href) => {
+        const result = remapReference(href, resource.sourcePath, decodeURIComponent(resource.targetHref), hrefMap);
+        if (result !== href) rewriteMap[href] = result;
+        return result;
+      });
+      resource.action = data === original ? "copy" : "rewrite";
       if (Object.keys(rewriteMap).length) rewrites[item.href] = rewriteMap;
-      const zipName = `OEBPS/${decodeURIComponent(finalHref)}`;
-      if (!written.has(zipName)) {
-        zipEntries.push({
-          name: zipName,
-          data,
-          level: /image\/(?:png|jpeg|gif|webp|avif)|font\/woff2/.test(
-            item.mediaType,
-          )
-            ? 0
-            : 6,
-        });
-        written.add(zipName);
-      }
+      yield { name: `OEBPS/${decodeURIComponent(resource.targetHref)}`, data: resource.action === "copy" ? original : data, level: resource.level };
+      completed++; progress();
     }
 
     for (const id of source.spineIds) spineIds.push(idMap.get(id)!);
@@ -182,7 +217,7 @@ export function mergeEpubs(
       ...entry,
       href: remapReference(
         entry.href,
-        `${source.opfDir}/content.opf`,
+        source.opfPath,
         "nav-merged.xhtml",
         hrefMap,
       ),
@@ -196,7 +231,6 @@ export function mergeEpubs(
     flatToc.push(...remapped.map((entry) => ({ ...entry, depth: 0 })));
     manifestSources.push({
       basename: source.basename,
-      sha256: source.sha256,
       title: source.title,
       language: source.language,
       creators: source.creators,
@@ -207,26 +241,27 @@ export function mergeEpubs(
       toc: source.toc,
       rewrites,
     });
-  });
+  }
 
-  zipEntries.push({
+  execution.onProgress?.({ phase: "writing", completed: order.length, total: order.length });
+  yield {
     name: "OEBPS/nav-merged.xhtml",
     data:
       structure === "flat"
         ? buildFlatNav(title, firstHref, flatToc)
         : buildVolumeNav(title, firstHref, volumeToc),
-  });
-  zipEntries.push({
+  };
+  yield {
     name: "OEBPS/content.opf",
     data: buildOpf(title, language, [...creators], outputItems, spineIds, "nav-merged.xhtml", { spine: spineProperties, pageProgressionDirection }),
-  });
-  zipEntries.push({
+  };
+  yield {
     name: MERGE_MANIFEST_PATH,
     data: utf8Encode(
       JSON.stringify(
         {
           schema: "epub-merge-tool/v1",
-          tool_version: "1.0.0",
+          tool_version: "1.1.0",
           structure,
           title,
           language: language,
@@ -236,11 +271,10 @@ export function mergeEpubs(
         2,
       ),
     ),
-  });
-  return { name: outputName, data: writeZip(zipEntries) };
+  };
 }
 
-function rejectDuplicateBasenames(inputs: InputFile[]): void {
+function rejectDuplicateBasenames(inputs: Array<{ name: string }>): void {
   const seen = new Set<string>();
   for (const input of inputs) {
     const basename = safeBasename(input.name);
