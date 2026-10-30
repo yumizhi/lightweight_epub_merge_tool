@@ -28,7 +28,7 @@ export function orderKey(source: SourceBook): number[] {
   const special = specialKey(filename);
   if (special) return special;
   for (const text of [filename, source.title, source.toc[0]?.title ?? ""]) {
-    const numbers = numberList(text);
+    const numbers = [...numberList(text), ...chineseOrdinals(text)];
     if (numbers.length) return numbers;
   }
   throw new OrderingError(`Could not determine input order for '${source.basename}'`);

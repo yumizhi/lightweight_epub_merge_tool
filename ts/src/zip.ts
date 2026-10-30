@@ -8,8 +8,8 @@ export interface ZipEntry {
   level?: ZipLevel;
 }
 
-export function readZip(data: Uint8Array): Map<string, Uint8Array> {
-  const raw = unzipSync(data);
+export function readZip(data: Uint8Array, names?: Set<string>): Map<string, Uint8Array> {
+  const raw = unzipSync(data, names ? { filter: entry => names.has(entry.name) } : {});
   return new Map(Object.entries(raw));
 }
 
@@ -19,4 +19,10 @@ export function writeZip(entries: ZipEntry[]): Uint8Array {
     zippable[entry.name] = [entry.data, { level: entry.level ?? 6 }];
   }
   return zipSync(zippable);
+}
+
+export function zipNames(data: Uint8Array): Set<string> {
+  const names = new Set<string>();
+  unzipSync(data, { filter: entry => { names.add(entry.name); return false; } });
+  return names;
 }

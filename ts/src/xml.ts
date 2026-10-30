@@ -1,4 +1,4 @@
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import { XMLBuilder, XMLParser, XMLValidator } from "fast-xml-parser";
 
 export const parser = new XMLParser({
   ignoreAttributes: false,
@@ -20,6 +20,8 @@ export const builder = new XMLBuilder({
 
 export function parseXml(data: Uint8Array | string): unknown {
   const text = typeof data === "string" ? data : new TextDecoder("utf-8").decode(data);
+  const result = XMLValidator.validate(text);
+  if (result !== true) throw new Error(`Invalid XML: ${result.err.msg}`);
   return parser.parse(text) as unknown;
 }
 

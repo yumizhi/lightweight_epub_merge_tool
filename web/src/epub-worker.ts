@@ -1,4 +1,4 @@
-import { readSourceBook } from "../../ts/src/epub-io.js";
+import { readBookSummary } from "../../ts/src/epub-io.js";
 import { inspectEpub, mergeEpubs, splitEpub } from "../../ts/src/index.js";
 import { orderKey } from "../../ts/src/ordering.js";
 import { writeZip } from "../../ts/src/zip.js";
@@ -9,7 +9,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   let response: WorkerResponse;
   try {
     if (request.type === "analyze") {
-      const source = readSourceBook(await readFile(request.file));
+      const source = readBookSummary(await readFile(request.file));
       let key: number[] | undefined;
       try { key = orderKey(source); } catch { /* Manual ordering remains available. */ }
       response = { type: "analyze", title: source.title, chapters: source.spineIds.length, orderKey: key };

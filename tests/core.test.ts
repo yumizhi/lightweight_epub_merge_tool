@@ -32,7 +32,7 @@ describe("EPUB core baseline", () => {
   it("rejects duplicate basenames, ambiguous ordering and invalid input", () => {
     expect(() => mergeEpubs("x.epub", [input(1), input(1)])).toThrow(/Duplicate/);
     expect(() => sortSources([readSourceBook(input(1)), { ...readSourceBook(input(1)), basename: "copy-1.epub" }])).toThrow();
-    expect(() => splitEpub(input(1).data)).toThrow(/manifest/);
+    expect(() => splitEpub(input(1).data)).toThrow(/merge record/);
     expect(() => readSourceBook({ name: "bad.epub", data: new Uint8Array([0]) })).toThrow();
   });
 });

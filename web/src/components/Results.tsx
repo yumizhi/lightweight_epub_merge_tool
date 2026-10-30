@@ -11,5 +11,12 @@ export function Downloads({ outputs, copy, busy, download, downloadAll }: { outp
   </section>;
 }
 export function Inspection({ report, copy }: { report: InspectReport; copy: Copy }) {
-  return <section className="inspection" aria-label={copy.metadata}><div className="section-heading"><h2>{copy.metadata}</h2><CheckCircle2 size={18}/></div><dl><dt>{copy.title}</dt><dd>{report.title}</dd><dt>{copy.structure}</dt><dd>{report.structure}</dd></dl><h3>{copy.sources}</h3><ol>{report.sources.map(source => <li key={source}>{source}</li>)}</ol></section>;
+  return <section className="inspection" aria-label={copy.metadata}>
+    <div className="section-heading"><h2>{copy.metadata}</h2><CheckCircle2 size={18}/></div>
+    <dl><dt>{copy.title}</dt><dd>{report.title}</dd><dt>{copy.creators}</dt><dd>{report.creators.join(", ") || copy.noCreator}</dd><dt>{copy.languageLabel}</dt><dd>{report.language}</dd><dt>EPUB</dt><dd>{report.version} · {report.resources} {copy.resources}</dd><dt>{copy.package}</dt><dd>{report.opf_path}</dd></dl>
+    {report.sources.length > 0 && <><h3>{copy.sources}</h3><ol>{report.sources.map(source => <li key={source}>{source}</li>)}</ol></>}
+    <details open><summary>{copy.toc} ({report.toc.length})</summary><ol>{report.toc.map((entry, index) => <li key={index} style={{ marginLeft: (entry.depth ?? 0) * 14 }}>{entry.title}<span className="toc-path">{entry.href}</span></li>)}</ol></details>
+    <details><summary>{copy.spine} ({report.spine.length})</summary><ol>{report.spine.map((href, index) => <li key={index}>{index + 1}. {href}</li>)}</ol></details>
+    <p className="operation-note">{copy.inspectNote}</p>
+  </section>;
 }
