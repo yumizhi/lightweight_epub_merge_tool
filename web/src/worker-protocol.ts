@@ -3,7 +3,12 @@ import type { InspectReport } from "../../ts/src/inspect.js";
 export type WorkerFile = { name: string; file: Blob };
 export type WorkerTask =
   | { type: "analyze"; file: WorkerFile }
-  | { type: "merge"; outputName: string; files: WorkerFile[]; options: MergeOptions }
+  | {
+      type: "merge";
+      outputName: string;
+      files: WorkerFile[];
+      options: MergeOptions;
+    }
   | { type: "inspect"; file: WorkerFile }
   | { type: "split"; file: WorkerFile }
   | { type: "archive"; files: WorkerFile[] };

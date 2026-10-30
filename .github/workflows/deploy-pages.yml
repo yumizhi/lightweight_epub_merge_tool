@@ -32,8 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web app
-        run: npm run build:web
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check and build web app
+        run: npm run verify
         env:
           GITHUB_PAGES: "true"
 

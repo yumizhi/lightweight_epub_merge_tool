@@ -1,10 +1,27 @@
 import { OrderingError } from "./errors.js";
 import type { SourceBook } from "./models.js";
 
-const SPECIAL_MARKERS = ["bd", "blu-ray", "bluray", "特典", "特装", "限定", "another"];
+const SPECIAL_MARKERS = [
+  "bd",
+  "blu-ray",
+  "bluray",
+  "特典",
+  "特装",
+  "限定",
+  "another",
+];
 const CHINESE_DIGITS = new Map<string, number>([
-  ["零", 0], ["〇", 0], ["一", 1], ["二", 2], ["三", 3], ["四", 4],
-  ["五", 5], ["六", 6], ["七", 7], ["八", 8], ["九", 9]
+  ["零", 0],
+  ["〇", 0],
+  ["一", 1],
+  ["二", 2],
+  ["三", 3],
+  ["四", 4],
+  ["五", 5],
+  ["六", 6],
+  ["七", 7],
+  ["八", 8],
+  ["九", 9],
 ]);
 
 export function sortSources(sources: SourceBook[]): SourceBook[] {
@@ -14,11 +31,15 @@ export function sortSources(sources: SourceBook[]): SourceBook[] {
     const key = item.key.join(".");
     const other = seen.get(key);
     if (other) {
-      throw new OrderingError(`Ambiguous input order: '${item.source.basename}' and '${other}' share order key (${item.key.join(",")})`);
+      throw new OrderingError(
+        `Ambiguous input order: '${item.source.basename}' and '${other}' share order key (${item.key.join(",")})`,
+      );
     }
     seen.set(key, item.source.basename);
   }
-  return keyed.sort((a, b) => compareKey(a.key, b.key)).map((item) => item.source);
+  return keyed
+    .sort((a, b) => compareKey(a.key, b.key))
+    .map((item) => item.source);
 }
 
 export function orderKey(source: SourceBook): number[] {
@@ -31,7 +52,9 @@ export function orderKey(source: SourceBook): number[] {
     const numbers = [...numberList(text), ...chineseOrdinals(text)];
     if (numbers.length) return numbers;
   }
-  throw new OrderingError(`Could not determine input order for '${source.basename}'`);
+  throw new OrderingError(
+    `Could not determine input order for '${source.basename}'`,
+  );
 }
 
 function compareKey(a: number[], b: number[]): number {
@@ -52,8 +75,11 @@ function decimalKey(text: string): number[] | undefined {
 
 function specialKey(text: string): number[] | undefined {
   const lowered = text.toLowerCase();
-  if (!SPECIAL_MARKERS.some((marker) => lowered.includes(marker))) return undefined;
-  const values = [...numberList(text), ...chineseOrdinals(text)].sort((a, b) => a - b);
+  if (!SPECIAL_MARKERS.some((marker) => lowered.includes(marker)))
+    return undefined;
+  const values = [...numberList(text), ...chineseOrdinals(text)].sort(
+    (a, b) => a - b,
+  );
   if (!values.length) return undefined;
   return [10_000, ...values];
 }

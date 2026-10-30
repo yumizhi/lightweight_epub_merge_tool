@@ -47,7 +47,7 @@ def order_key(source: SourceBook) -> tuple[int, ...]:
     if special:
         return special
     for text in (filename, source.title, source.toc[0].title if source.toc else ""):
-        numbers = _numbers(text)
+        numbers = _numbers(text) + _chinese_ordinals(text)
         if numbers:
             return numbers
     raise OrderingError(f"Could not determine input order for {source.basename!r}")

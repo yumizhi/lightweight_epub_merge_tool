@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { WorkerReply, WorkerResponse, WorkerTask } from "../worker-protocol";
+import type {
+  WorkerReply,
+  WorkerResponse,
+  WorkerTask,
+} from "../worker-protocol";
 
 export function useEpubWorker() {
   const worker = useRef<Worker | null>(null);
   const sequence = useRef(0);
-  const pending = useRef<{ id: number; resolve: (reply: WorkerResponse) => void; reject: (error: Error) => void } | null>(null);
+  const pending = useRef<{
+    id: number;
+    resolve: (reply: WorkerResponse) => void;
+    reject: (error: Error) => void;
+  } | null>(null);
   const cancel = useCallback(() => {
     worker.current?.terminate();
     worker.current = null;
@@ -15,7 +23,10 @@ export function useEpubWorker() {
   const run = useCallback((task: WorkerTask): Promise<WorkerResponse> => {
     if (pending.current) throw new Error("A task is already running");
     if (!worker.current) {
-      const instance = new Worker(new URL("../epub-worker.ts", import.meta.url), { type: "module" });
+      const instance = new Worker(
+        new URL("../epub-worker.ts", import.meta.url),
+        { type: "module" },
+      );
       instance.onmessage = ({ data }: MessageEvent<WorkerReply>) => {
         if (!pending.current || pending.current.id !== data.requestId) return;
         const task = pending.current;
@@ -24,7 +35,9 @@ export function useEpubWorker() {
         else task.resolve(data);
       };
       instance.onerror = (event) => {
-        pending.current?.reject(new Error(event.message || "Worker failed to load"));
+        pending.current?.reject(
+          new Error(event.message || "Worker failed to load"),
+        );
         pending.current = null;
         instance.terminate();
         worker.current = null;

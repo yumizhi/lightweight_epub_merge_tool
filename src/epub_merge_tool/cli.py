@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 from .errors import EpubMergeError
@@ -30,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "inspect":
             print(json.dumps(inspect_epub(args.input), ensure_ascii=False, indent=2))
             return 0
-    except EpubMergeError as exc:
+    except (EpubMergeError, OSError, zipfile.BadZipFile) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     parser.print_help(sys.stderr)
@@ -51,8 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
     split = subparsers.add_parser("split", help="split a tool-generated EPUB")
     split.add_argument("input", type=Path)
     split.add_argument("--out-dir", required=True, type=Path)
-    split.add_argument("--heuristic", action="store_true")
+    split.add_argument("--heuristic", action="store_true", help="copy an ordinary EPUB as one book; does not infer chapter splits")
 
-    inspect = subparsers.add_parser("inspect", help="inspect merge manifest")
+    inspect = subparsers.add_parser("inspect", help="inspect EPUB metadata, reading order, and navigation")
     inspect.add_argument("input", type=Path)
     return parser

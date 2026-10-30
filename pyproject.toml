@@ -1,13 +1,19 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lightweight-epub-merge-tool"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.10"
 dependencies = []
-description = "Strict CLI-first EPUB merge and split tool"
+description = "Merge, split, and inspect EPUB books locally"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{name = "monad"}]
+
+[project.urls]
+Repository = "https://github.com/yumizhi/lightweight_epub_merge_tool"
 
 [project.scripts]
 epub-merge = "epub_merge_tool.cli:main"
