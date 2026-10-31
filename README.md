@@ -8,7 +8,9 @@ Local processing · No file uploads · Offline availability · Python and Node C
 
 合并 EPUB 分卷、恢复单册、查看书籍结构。支持中英文、明暗主题和离线使用。
 
-![EPUB Toolkit: book queue, collection settings, and download](docs/workspace.png)
+![EPUB Toolkit: draggable book queue, contents preview, and download](docs/workspace.png)
+
+[Watch the file-to-download workflow](docs/workflow.gif)
 
 ## What it does
 
@@ -18,7 +20,11 @@ Local processing · No file uploads · Offline availability · Python and Node C
 | **Split** | Reconstruct the volumes of an EPUB merged with this tool. Download each book or take all of them in one ZIP. |
 | **Inspect** | Read the title, author, language, package version, reading order, and navigation of an ordinary or merged EPUB. |
 
-The workspace supports drag and drop, automatic volume sorting, manual reordering, cancellation, English and Chinese, and light and dark themes. It also works on a phone. File reordering, menus, task states, and output panels use short animations and respect reduced-motion preferences.
+Drag books into reading order with a mouse, touch, or the keyboard; automatic sorting and arrow controls remain available. The contents preview follows your chosen order and grouped/flat setting. Each tab keeps its own files and results until you clear it.
+
+After merging, download the EPUB or open it directly in Inspect or Split. There is no need to download and upload it again. Split shows the recoverable volumes before processing; Inspect puts metadata and navigation first, with detailed paths behind expandable sections.
+
+The workspace supports cancellation, English and Chinese, light and dark themes, and phone and tablet layouts. Short transitions and layout animations respect reduced-motion preferences. Edits invalidate old downloads; switching tabs does not.
 
 EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, CSS, images, SVG references, and plain fonts, including nested relative paths. Matching binary images and fonts are stored once in a merged book.
 
@@ -26,7 +32,7 @@ EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, 
 
 ## Privacy and offline use
 
-Book files stay in browser memory and are processed in a Web Worker. There is no upload endpoint, account, analytics, or server-side storage. Language and theme preferences are saved on the device.
+Book files and saved tab contents stay in browser memory and are processed in a Web Worker. Clear a tab or close the page to release its work. Reloading the page does not restore selected books. There is no upload endpoint, account, analytics, or server-side storage. Language and theme preferences are saved on the device.
 
 After the app reports that it is ready for offline use, it can be reopened without a connection. The app shell and processing code are cached; your books are not. Supported browsers offer **Install app**. Safari users can use the browser's Add to Dock or Add to Home Screen command. Updates appear as an explicit prompt.
 
@@ -54,15 +60,15 @@ To deploy a reviewed version, select **Actions → Deploy Web UI to GitHub Pages
 
 ## Release artifacts
 
-Version 1.1.0 is prepared in this checkout. The online link serves the latest deployed build.
+Version 1.2.0 is prepared in this checkout. The online link serves the latest deployed build.
 
 ```sh
-npm run package:node        # dist/epub-toolkit-node-1.1.0.tgz
+npm run package:node        # dist/epub-toolkit-node-1.2.0.tgz
 python -m pip install build
 python -m build            # dist/*.whl and dist/*.tar.gz
 ```
 
-Python users can install the downloaded wheel with `python -m pip install ./lightweight_epub_merge_tool-1.1.0-py3-none-any.whl`. The CLI binaries are `epub-merge` (Python) and `epub-toolkit` (Node). Neither CLI needs a web server. The static web artifact is built for `/lightweight_epub_merge_tool/`; serve it at that path to preserve Worker/PWA URLs.
+Python users can install the downloaded wheel with `python -m pip install ./lightweight_epub_merge_tool-1.2.0-py3-none-any.whl`. The CLI binaries are `epub-merge` (Python) and `epub-toolkit` (Node). Neither CLI needs a web server. The static web artifact is built for `/lightweight_epub_merge_tool/`; serve it at that path to preserve Worker/PWA URLs.
 
 ## Python CLI
 
@@ -103,7 +109,7 @@ node dist-ts/src/cli.js split collection.epub --out-dir recovered
 node dist-ts/src/cli.js inspect collection.epub
 ```
 
-Install the prepared Node package with `npm install -g ./epub-toolkit-node-1.1.0.tgz`, then run `epub-toolkit merge`, `epub-toolkit split`, or `epub-toolkit inspect` with the same arguments shown above. To prepare it locally, run `npm run package:node`.
+Install the prepared Node package with `npm install -g ./epub-toolkit-node-1.2.0.tgz`, then run `epub-toolkit merge`, `epub-toolkit split`, or `epub-toolkit inspect` with the same arguments shown above. To prepare it locally, run `npm run package:node`.
 
 The core exports `mergeEpubs`, `splitEpub`, `inspectEpub`, `readSourceBook`, and `readBookSummary`. `mergeEpubFiles(name, [{name, file: Blob}], mergeOptions, {onProgress, signal})` and `splitEpubFile(blob, {onProgress, signal})` provide asynchronous Blob inputs/outputs and optional progress/cancellation controls. Both paths share the same resource rules. The existing synchronous APIs use `Uint8Array` and remain available in Node and the browser. The Python implementation retains its standard-library-only installation, and interoperability tests cover merge/split in both directions.
 
@@ -125,7 +131,9 @@ CI runs this validation for EPUB 2/3 merge and split outputs, plus Python intero
 
 The manual **Build release packages** workflow produces a Python wheel, source archive, installable Node tarball, and static web build as downloadable artifacts. It installs both CLIs in clean environments and runs merge, split and inspect. Packaging does not publish a release or deploy a site.
 
-See [architecture and design decisions](docs/architecture.md) for resource mapping, memory use, and task cancellation.
+To refresh the real workflow recording, install Playwright’s Chromium and FFmpeg with `npx playwright install chromium ffmpeg`, then run `RECORD_DEMO=1 npx playwright test demo.spec.ts` after building the Pages app. The generated WebM is saved in the test output directory. The README GIF is an extract of that recording.
+
+See [architecture and design decisions](docs/architecture.md) for resource mapping, workspace state, memory use, and task cancellation.
 
 <details>
 <summary>Mobile workspace in dark mode</summary>
