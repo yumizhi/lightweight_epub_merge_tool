@@ -14,11 +14,12 @@ export type WorkerTask =
   | { type: "archive"; files: WorkerFile[] };
 export type WorkerRequest = WorkerTask & { requestId: number };
 export type WorkerResponse =
-  | { type: "analyze"; title: string; chapters: number; orderKey?: number[] }
+  | { type: "analyze"; report: InspectReport; orderKey?: number[] }
   | { type: "merge" | "archive"; name: string; blob: Blob }
   | { type: "split"; results: { name: string; blob: Blob }[] }
   | { type: "inspect"; report: InspectReport }
   | { type: "error"; message: string };
 export type WorkerReply = (
-  WorkerResponse | { type: "progress"; progress: ProcessingProgress }
+  | WorkerResponse
+  | { type: "progress"; progress: ProcessingProgress }
 ) & { requestId: number };

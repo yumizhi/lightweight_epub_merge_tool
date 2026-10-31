@@ -102,7 +102,7 @@ function runSplit(args: string[]): number {
 }
 
 function usage(): void {
-  console.log(`EPUB Toolkit 1.1.0
+  console.log(`EPUB Toolkit 1.2.0
 usage: epub-toolkit COMMAND
   merge OUTPUT INPUT... [--title TITLE] [--structure volume|flat] [--input-order]
   split INPUT --out-dir DIR

@@ -373,7 +373,7 @@ function* mergeEntries(
       JSON.stringify(
         {
           schema: "epub-merge-tool/v1",
-          tool_version: "1.1.0",
+          tool_version: "1.2.0",
           structure,
           title,
           language: language,

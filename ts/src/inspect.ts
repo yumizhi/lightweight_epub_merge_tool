@@ -15,6 +15,7 @@ export interface InspectReport {
   version: string;
   opf_path: string;
   resources: number;
+  resource_items: Array<{ href: string; media_type: string }>;
   spine: string[];
   toc: TocEntry[];
   sources: string[];
@@ -35,6 +36,10 @@ export function inspectEpub(input: Uint8Array): InspectReport {
     version: book.version,
     opf_path: book.opfPath,
     resources: book.manifestItems.length,
+    resource_items: book.manifestItems.map((item) => ({
+      href: item.href,
+      media_type: item.mediaType,
+    })),
     spine: book.spineIds.map(
       (id) => book.manifestItems.find((item) => item.id === id)!.href,
     ),

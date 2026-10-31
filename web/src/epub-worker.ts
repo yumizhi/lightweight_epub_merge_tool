@@ -1,4 +1,3 @@
-import { readBookSummary } from "../../ts/src/epub-io.js";
 import {
   inspectEpub,
   mergeEpubFiles,
@@ -33,17 +32,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   };
   try {
     if (request.type === "analyze") {
-      const source = readBookSummary(await readFile(request.file));
+      const source = await readFile(request.file);
+      const report = inspectEpub(source.data);
       let key: number[] | undefined;
       try {
-        key = orderKey(source);
+        key = orderKey({
+          basename: source.name,
+          title: report.title,
+          toc: report.toc,
+        });
       } catch {
         /* Manual ordering remains available. */
       }
       response = {
         type: "analyze",
-        title: source.title,
-        chapters: source.spineIds.length,
+        report,
         orderKey: key,
       };
     } else if (request.type === "merge") {

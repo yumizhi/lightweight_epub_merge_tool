@@ -4,80 +4,162 @@ import { toast } from "sonner";
 import type { InspectReport } from "../../../ts/src/inspect.js";
 import type { Copy } from "../i18n";
 import { useEpubWorker } from "./useEpubWorker";
+
 export type Mode = "merge" | "split" | "inspect";
 export type BookFile = {
   id: string;
   file: File;
   title?: string;
   chapters?: number;
+  summary?: InspectReport;
   orderKey?: number[];
   status: "reading" | "ready" | "error";
   error?: string;
 };
 export type OutputFile = { name: string; blob: Blob; url: string };
+type Session = {
+  books: BookFile[];
+  outputs: OutputFile[];
+  report: InspectReport | null;
+  error: string;
+  stale: boolean;
+};
+type Task = {
+  mode: Mode;
+  kind: "reading" | "processing" | "packing";
+  progress: ProcessingProgress | null;
+};
+const emptySession = (): Session => ({
+  books: [],
+  outputs: [],
+  report: null,
+  error: "",
+  stale: false,
+});
 const workerFile = (file: File) => ({ name: file.name, file });
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 const isCancelled = (error: unknown) =>
   error instanceof Error && error.name === "AbortError";
+const invalidated = (session: Session): Session => ({
+  ...session,
+  outputs: [],
+  report: null,
+  error: "",
+  stale: session.stale || session.outputs.length > 0 || !!session.report,
+});
+
 export function useWorkspace(copy: Copy) {
   const [mode, setMode] = useState<Mode>("merge");
-  const [books, setBooks] = useState<BookFile[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<ProcessingProgress | null>(null);
-  const [reading, setReading] = useState(false);
-  const [error, setError] = useState("");
-  const [outputs, setOutputs] = useState<OutputFile[]>([]);
-  const [report, setReport] = useState<InspectReport | null>(null);
+  const [sessions, setSessions] = useState<Record<Mode, Session>>({
+    merge: emptySession(),
+    split: emptySession(),
+    inspect: emptySession(),
+  });
+  const [task, setTask] = useState<Task | null>(null);
+  const taskRef = useRef<Task | null>(null);
   const [title, setTitle] = useState("");
   const [outputName, setOutputName] = useState("collection.epub");
   const [structure, setStructure] = useState<"volume" | "flat">("volume");
   const { run, cancel } = useEpubWorker();
   const generation = useRef(0);
-  const locked = busy || reading;
-  useEffect(
-    () => () => outputs.forEach((o) => URL.revokeObjectURL(o.url)),
-    [outputs],
+  const urls = useRef(new Set<string>());
+  const temporaryUrls = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
   );
-  const invalidate = () => {
-    setOutputs([]);
-    setReport(null);
-    setError("");
-    setProgress(null);
-  };
-  function reset() {
+  const active = sessions[mode];
+
+  // A mode switch leaves URLs alive. Only removed results and unmount release them.
+  useEffect(() => {
+    const next = new Set(
+      Object.values(sessions).flatMap((s) => s.outputs.map((o) => o.url)),
+    );
+    for (const url of urls.current)
+      if (!next.has(url)) URL.revokeObjectURL(url);
+    urls.current = next;
+  }, [sessions]);
+  useEffect(
+    () => () => {
+      generation.current++;
+      for (const url of urls.current) URL.revokeObjectURL(url);
+      for (const [url, timer] of temporaryUrls.current) {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+      }
+    },
+    [],
+  );
+
+  function update(target: Mode, change: (session: Session) => Session) {
+    setSessions((current) => ({
+      ...current,
+      [target]: change(current[target]),
+    }));
+  }
+  function begin(target: Mode, kind: Task["kind"]) {
+    const next = { mode: target, kind, progress: null };
+    taskRef.current = next;
+    setTask(next);
+    return ++generation.current;
+  }
+  function finish(current: number) {
+    if (current !== generation.current) return;
+    taskRef.current = null;
+    setTask(null);
+  }
+  function onProgress(current: number, progress: ProcessingProgress) {
+    if (current === generation.current)
+      setTask((task) => task && { ...task, progress });
+  }
+  function stop() {
+    const target = taskRef.current?.mode;
     generation.current++;
     cancel();
-    setBooks([]);
-    setBusy(false);
-    setReading(false);
-    invalidate();
+    taskRef.current = null;
+    setTask(null);
+    if (target)
+      update(target, (s) => ({
+        ...s,
+        books: s.books.filter((b) => b.status !== "reading"),
+      }));
+    toast(copy.cancelled);
   }
-  function changeMode(value: Mode) {
-    reset();
-    setMode(value);
+  function reset() {
+    if (taskRef.current) return;
+    update(mode, emptySession);
   }
-  async function add(files: File[]) {
-    if (locked) return;
-    if (!files.length) return;
+  async function add(
+    files: File[],
+    target: Mode = mode,
+    inspectResult = false,
+  ) {
+    if (taskRef.current || !files.length) return;
     if (files.some((f) => !f.name.toLowerCase().endsWith(".epub"))) {
-      setError(copy.unsupported);
+      update(target, (s) => ({ ...s, error: copy.unsupported }));
       return;
     }
-    if (mode !== "merge" && files.length !== 1) {
-      setError(copy.single);
+    if (target !== "merge" && files.length !== 1) {
+      update(target, (s) => ({ ...s, error: copy.single }));
       return;
     }
-    invalidate();
     const records: BookFile[] = files.map((file) => ({
       id: crypto.randomUUID(),
       file,
       status: "reading",
     }));
-    setBooks((current) =>
-      mode === "merge" ? [...current, ...records] : records,
-    );
-    setReading(true);
-    const current = generation.current;
-    for (const record of records) {
+    update(target, (s) => ({
+      ...invalidated(s),
+      books: target === "merge" ? [...s.books, ...records] : records,
+    }));
+    const current = begin(target, "reading");
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index];
+      onProgress(current, {
+        phase: "reading",
+        completed: index,
+        total: records.length,
+        file: record.file.name,
+      });
       try {
         const response = await run({
           type: "analyze",
@@ -85,61 +167,62 @@ export function useWorkspace(copy: Copy) {
         });
         if (current !== generation.current) return;
         if (response.type === "analyze")
-          setBooks((books) =>
-            books.map((b) =>
-              b.id === record.id ? { ...b, ...response, status: "ready" } : b,
+          update(target, (s) => ({
+            ...s,
+            books: s.books.map((b) =>
+              b.id === record.id
+                ? {
+                    ...b,
+                    summary: response.report,
+                    title: response.report.title,
+                    chapters: response.report.spine.length,
+                    orderKey: response.orderKey,
+                    status: "ready",
+                  }
+                : b,
             ),
-          );
+            ...(inspectResult ? { report: response.report, stale: false } : {}),
+          }));
       } catch (error) {
         if (current !== generation.current || isCancelled(error)) return;
-        setBooks((books) =>
-          books.map((b) =>
+        update(target, (s) => ({
+          ...s,
+          books: s.books.map((b) =>
             b.id === record.id
-              ? {
-                  ...b,
-                  status: "error",
-                  error: String(error instanceof Error ? error.message : error),
-                }
+              ? { ...b, status: "error", error: message(error) }
               : b,
           ),
-        );
+        }));
       }
     }
-    if (current === generation.current) setReading(false);
+    finish(current);
   }
-  function stop() {
-    generation.current++;
-    cancel();
-    setBooks((books) => books.filter((b) => b.status !== "reading"));
-    setBusy(false);
-    setReading(false);
-    setProgress(null);
-    toast(copy.cancelled);
-  }
-  function move(index: number, direction: number) {
-    invalidate();
-    setBooks((books) => {
-      const next = [...books];
-      [next[index], next[index + direction]] = [
-        next[index + direction],
-        next[index],
-      ];
-      return next;
+  function reorder(from: number, to: number) {
+    if (taskRef.current || from === to || to < 0 || to >= active.books.length)
+      return;
+    update(mode, (s) => {
+      const books = [...s.books];
+      books.splice(to, 0, books.splice(from, 1)[0]);
+      return { ...invalidated(s), books };
     });
   }
   function remove(id: string) {
-    invalidate();
-    setBooks((books) => books.filter((b) => b.id !== id));
+    if (taskRef.current) return;
+    update(mode, (s) => ({
+      ...invalidated(s),
+      books: s.books.filter((b) => b.id !== id),
+    }));
   }
   function sort() {
-    const keys = books.map((b) => b.orderKey?.join("."));
-    if (keys.some((k) => !k) || new Set(keys).size !== books.length) {
+    if (taskRef.current) return;
+    const keys = active.books.map((b) => b.orderKey?.join("."));
+    if (keys.some((k) => !k) || new Set(keys).size !== active.books.length) {
       toast.error(copy.autoError);
       return;
     }
-    invalidate();
-    setBooks((books) =>
-      [...books].sort((a, b) => {
+    update(mode, (s) => ({
+      ...invalidated(s),
+      books: [...s.books].sort((a, b) => {
         const x = a.orderKey!,
           y = b.orderKey!;
         for (let i = 0; i < Math.max(x.length, y.length); i++) {
@@ -148,18 +231,33 @@ export function useWorkspace(copy: Copy) {
         }
         return 0;
       }),
-    );
+    }));
     toast.success(copy.autoDone);
   }
   function createOutput(name: string, blob: Blob): OutputFile {
     return { name, blob, url: URL.createObjectURL(blob) };
   }
   async function process() {
-    if (locked || !books.length || books.some((b) => b.status !== "ready"))
+    const { books } = active;
+    if (
+      taskRef.current ||
+      !books.length ||
+      books.some((b) => b.status !== "ready")
+    )
       return;
-    invalidate();
-    setBusy(true);
-    const current = generation.current;
+    if (mode === "inspect") {
+      update(mode, (s) => ({
+        ...s,
+        report: books[0].summary!,
+        error: "",
+        stale: false,
+      }));
+      return;
+    }
+    if (mode === "split" && !books[0].summary?.tool_generated) return;
+    const target = mode;
+    update(target, (s) => ({ ...invalidated(s), stale: false }));
+    const current = begin(target, "processing");
     try {
       const response = await run(
         mode === "merge"
@@ -175,28 +273,28 @@ export function useWorkspace(copy: Copy) {
                 inputOrder: true,
               },
             }
-          : { type: mode, file: workerFile(books[0].file) },
-        (progress) => {
-          if (current === generation.current) setProgress(progress);
-        },
+          : { type: "split", file: workerFile(books[0].file) },
+        (progress) => onProgress(current, progress),
       );
       if (current !== generation.current) return;
-      if (response.type === "merge")
-        setOutputs([createOutput(response.name, response.blob)]);
-      if (response.type === "split")
-        setOutputs(response.results.map((r) => createOutput(r.name, r.blob)));
-      if (response.type === "inspect") setReport(response.report);
+      if (response.type === "merge") {
+        const outputs = [createOutput(response.name, response.blob)];
+        update(target, (s) => ({ ...s, outputs }));
+      }
+      if (response.type === "split") {
+        const outputs = response.results.map((r) =>
+          createOutput(r.name, r.blob),
+        );
+        update(target, (s) => ({ ...s, outputs }));
+      }
       toast.success(copy.completed);
     } catch (error) {
       if (current === generation.current && !isCancelled(error)) {
-        setError(error instanceof Error ? error.message : String(error));
+        update(target, (s) => ({ ...s, error: message(error) }));
         toast.error(copy.error);
       }
     } finally {
-      if (current === generation.current) {
-        setBusy(false);
-        setProgress(null);
-      }
+      finish(current);
     }
   }
   function download(output: OutputFile) {
@@ -207,72 +305,83 @@ export function useWorkspace(copy: Copy) {
     toast.success(copy.downloadStarted);
   }
   async function downloadAll() {
-    if (locked || !outputs.length) return;
-    setError("");
-    setProgress(null);
-    setBusy(true);
-    const current = generation.current;
+    if (taskRef.current || !active.outputs.length) return;
+    const target = mode;
+    update(target, (s) => ({ ...s, error: "" }));
+    const current = begin(target, "packing");
     try {
       const response = await run(
         {
           type: "archive",
-          files: outputs.map((o) => ({ name: o.name, file: o.blob })),
+          files: active.outputs.map((o) => ({ name: o.name, file: o.blob })),
         },
-        (progress) => {
-          if (current === generation.current) setProgress(progress);
-        },
+        (progress) => onProgress(current, progress),
       );
       if (current !== generation.current) return;
       if (response.type === "archive") {
         const output = createOutput(response.name, response.blob);
         download(output);
-        // Give the browser time to consume the object URL, then release it.
-        setTimeout(() => URL.revokeObjectURL(output.url), 60_000);
+        // Let the browser consume the download URL; clean it on unmount too.
+        temporaryUrls.current.set(
+          output.url,
+          setTimeout(() => {
+            URL.revokeObjectURL(output.url);
+            temporaryUrls.current.delete(output.url);
+          }, 60_000),
+        );
       }
     } catch (error) {
       if (current === generation.current && !isCancelled(error))
-        setError(String(error));
+        update(target, (s) => ({ ...s, error: message(error) }));
     } finally {
-      if (current === generation.current) {
-        setBusy(false);
-        setProgress(null);
-      }
+      finish(current);
     }
   }
+  function useOutput(output: OutputFile, target: "inspect" | "split") {
+    if (taskRef.current) return;
+    setMode(target);
+    // File/Blob construction shares immutable bytes; no download or ZIP round trip.
+    void add(
+      [new File([output.blob], output.name, { type: "application/epub+zip" })],
+      target,
+      target === "inspect",
+    );
+  }
+  function edit(setting: () => void) {
+    if (taskRef.current) return;
+    update("merge", invalidated);
+    setting();
+  }
   return {
+    ...active,
     mode,
-    changeMode,
-    books,
-    busy,
-    progress,
-    reading,
-    locked,
-    error,
-    outputs,
-    report,
+    changeMode: setMode,
+    task,
+    locked: !!task,
+    busy: task?.kind !== "reading" && !!task,
+    reading: task?.kind === "reading",
+    progress: task?.progress ?? null,
     title,
-    setTitle: (value: string) => {
-      invalidate();
-      setTitle(value);
-    },
+    setTitle: (value: string) => edit(() => setTitle(value)),
     outputName,
-    setOutputName: (value: string) => {
-      invalidate();
-      setOutputName(value);
-    },
+    setOutputName: (value: string) => edit(() => setOutputName(value)),
     structure,
-    setStructure: (value: "volume" | "flat") => {
-      invalidate();
-      setStructure(value);
-    },
+    setStructure: (value: "volume" | "flat") => edit(() => setStructure(value)),
     add,
     reset,
     stop,
-    move,
+    reorder,
+    move: (index: number, direction: number) =>
+      reorder(index, index + direction),
     remove,
     sort,
     process,
     download,
     downloadAll,
+    useOutput,
+    saved: Object.fromEntries(
+      Object.entries(sessions).map(([key, s]) => [key, s.books.length > 0]),
+    ),
   };
 }
+export type Workspace = ReturnType<typeof useWorkspace>;
