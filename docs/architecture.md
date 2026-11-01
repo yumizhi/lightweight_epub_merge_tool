@@ -8,6 +8,18 @@ The Worker has one active request. Metadata analysis runs sequentially through t
 
 The Worker returns immutable `Blob` results. Structured cloning a Blob shares its backing storage, avoiding a complete output ArrayBuffer transfer and a second Blob construction on the main thread. Download URLs are revoked when results change or the workspace closes. Editing an output setting invalidates the old result.
 
+## Workspace state and interaction
+
+React holds three small session records for Merge, Split and Inspect. Each record owns its selected Files, parsed summaries, results and error. Switching tabs changes only the selected mode. Settings belong to Merge; editing inputs clears that session’s old output immediately and shows a request to process again. Clear only removes the current session. A page reload clears all book state.
+
+There is still one Worker and one active task. A task carries its originating mode, so switching tabs cannot send a completion into another workspace. Other tabs can be reviewed during a task; competing processing or input changes wait until completion or cancellation. A visible task banner provides cancellation and a link back to the originating mode.
+
+Analysis returns the existing Inspect report, including parsed navigation and manifest paths. The Merge preview uses that navigation, adding a volume level or flattening linked entries by the same rules as the navigation writer. It never reparses EPUB documents on the main thread. Inspect reuses the parsed report. Split uses the existing merge record’s source list to preview recoverable books before reconstruction. Navigation branches and path lists mount on demand in batches of 24, rather than creating thousands of hidden DOM nodes.
+
+The dnd-kit React sortable integration provides pointer, touch and keyboard sensors, optimistic list placement, focus restoration and localized announcements. Drop commits its initial/final indexes directly to the same order used by preview and merge. Escape keeps the original order and result. Arrow controls and automatic sorting update the same array. Motion animates those idle layout changes with a spring; dnd-kit owns transforms during dragging. Short motion tokens live in `web/src/lib/motion.ts`, and reduced motion disables spatial animation and drop transitions. Results become usable as soon as the Worker resolves.
+
+Result actions create a File backed by the output Blob for Inspect or Split, without a ZIP serialization or download/upload round trip. Sessions retain only the inputs/results they still expose. A URL set comparison revokes removed downloads without touching saved results in another tab. Packing-download URLs are short-lived and also cleaned up on unmount. Keeping a Blob as another tab’s source intentionally keeps its bytes available even after the original result URL is revoked.
+
 ## Analysis and execution
 
 The processing path is:

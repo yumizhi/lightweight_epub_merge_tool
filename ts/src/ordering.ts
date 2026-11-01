@@ -42,7 +42,9 @@ export function sortSources(sources: SourceBook[]): SourceBook[] {
     .map((item) => item.source);
 }
 
-export function orderKey(source: SourceBook): number[] {
+export function orderKey(
+  source: Pick<SourceBook, "basename" | "title" | "toc">,
+): number[] {
   const filename = source.basename.replace(/\.epub$/i, "");
   const decimal = decimalKey(filename);
   if (decimal) return decimal;

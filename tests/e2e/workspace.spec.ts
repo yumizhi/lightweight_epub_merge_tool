@@ -128,13 +128,8 @@ test("handles malformed input, cancellation, and a fresh task", async ({
   await page
     .getByLabel("Choose files", { exact: true })
     .setInputFiles(upload(1));
-  await expect(
-    page.getByRole("button", { name: "Split into books" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Split into books" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Split requires a book merged with this tool",
-  );
+  await expect(page.getByRole("alert")).toContainText("This EPUB has no merge record");
+  await expect(page.getByRole("button", { name: "Split into books" })).toBeDisabled();
 });
 
 test("keeps language and theme preferences and fits a phone", async ({
@@ -214,7 +209,7 @@ test("animates file reordering and select menus", async ({ page }) => {
   await expect
     .poll(() =>
       page
-        .locator(".book-row")
+        .locator(".sortable-book")
         .evaluateAll((rows) =>
           rows.some((row) => getComputedStyle(row).transform !== "none"),
         ),
@@ -296,11 +291,14 @@ test("reports real Worker stages, cancels processing and starts a fresh task", a
       ),
     )
     .toBe(true);
+  await page.getByRole("tab", { name: "Inspect", exact: true }).click();
+  await expect(page.getByRole("button", { name: "View task" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".task-status")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Download", exact: true }),
   ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Merge", exact: true }).click();
   await page.getByRole("button", { name: "Clear all" }).click();
   await page
     .getByLabel("Choose files", { exact: true })
