@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle, Upload, X } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -27,27 +27,41 @@ import { previewContents } from "../lib/toc";
 import { MOTION } from "../lib/motion";
 import { formatSize } from "../lib/utils";
 
+const MotionCard = motion.create(Card);
+const MotionCardContent = motion.create(CardContent);
+const MotionButton = motion.create(Button);
+
 export function SourcePicker({ w, copy }: { w: Workspace; copy: Copy }) {
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const reduced = useReducedMotion();
   const merge = w.mode === "merge";
   return (
-    <Card className="file-panel">
-      {!w.books.length && (
-        <CardHeader>
-          <CardTitle>{merge ? copy.queue : copy.source}</CardTitle>
-          <CardDescription>{copy[`${w.mode}Hint`]}</CardDescription>
-        </CardHeader>
-      )}
-      <CardContent className={w.books.length ? "pt-6" : undefined}>
+    <MotionCard className="file-panel source-column" layout={!reduced} style={{ originY: 0 }}>
+      <MotionCardContent className="source-body" layout={reduced ? false : "position"}>
+        <AnimatePresence initial={false} mode="popLayout">
+          {!w.books.length && (
+            <motion.div
+              key={w.mode}
+              className="source-intro"
+              layout={reduced ? false : "position"}
+              initial={{ opacity: reduced ? 1 : 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: reduced ? 0 : MOTION.exit, delay: 0 } }}
+              transition={{ duration: reduced ? 0 : MOTION.micro, delay: reduced ? 0 : MOTION.content }}
+            >
+              <CardTitle>{merge ? copy.queue : copy.source}</CardTitle>
+              <CardDescription>{copy[`${w.mode}Hint`]}</CardDescription>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <input
           ref={input}
           type="file"
           accept=".epub,application/epub+zip"
           multiple={merge}
           className="sr-only"
-          aria-label={copy.browse}
+          aria-label={merge ? copy.browse : copy.browseOne}
           disabled={w.locked}
           onChange={(event) => {
             void w.add(Array.from(event.target.files || []));
@@ -56,7 +70,6 @@ export function SourcePicker({ w, copy }: { w: Workspace; copy: Copy }) {
         />
         <motion.div
           layout={!reduced}
-          transition={MOTION.spring}
           className={`dropzone ${dragging ? "dragging" : ""} ${w.books.length ? "compact" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
@@ -73,35 +86,40 @@ export function SourcePicker({ w, copy }: { w: Workspace; copy: Copy }) {
             if (!w.locked) void w.add(Array.from(event.dataTransfer.files));
           }}
         >
-          <Upload className="drop-icon" size={20} aria-hidden />
-          <div>
+          <motion.span className="drop-icon" layout={reduced ? false : "position"} aria-hidden><Upload size={20} /></motion.span>
+          <motion.div layout={reduced ? false : "position"}>
             <h2>{merge ? copy.drop : copy.dropOne}</h2>
             <p>{copy.dropHint}</p>
-          </div>
-          <Button
+          </motion.div>
+          <MotionButton
+            layout={reduced ? false : "position"}
             variant="outline"
-            disabled={w.locked}
-            onClick={() => input.current?.click()}
+            aria-disabled={w.locked}
+            onClick={() => { if (!w.locked) input.current?.click(); }}
           >
-            {w.books.length && merge ? copy.add : copy.browse}
-          </Button>
+            {w.books.length && merge ? copy.add : merge ? copy.browse : copy.browseOne}
+          </MotionButton>
         </motion.div>
-        {!!w.books.length && (
-          <FileQueue
-            books={w.books}
-            merge={merge}
-            locked={w.locked}
-            copy={copy}
-            onClear={w.reset}
-            onMove={w.move}
-            onReorder={w.reorder}
-            onRemove={w.remove}
-            onSort={w.sort}
-          />
-        )}
-        {!merge && <TaskError w={w} copy={copy} />}
-      </CardContent>
-    </Card>
+        <AnimatePresence initial={false} mode="popLayout">
+          {!!w.books.length && (
+            <motion.div key={w.mode} layout={reduced ? false : "position"} initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduced ? 0 : -4 }} transition={{ duration: reduced ? 0 : MOTION.exit }}>
+              <FileQueue
+                books={w.books}
+                merge={merge}
+                locked={w.locked}
+                copy={copy}
+                onClear={w.reset}
+                onMove={w.move}
+                onReorder={w.reorder}
+                onRemove={w.remove}
+                onSort={w.sort}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {(!merge || !w.books.length) && <TaskError w={w} copy={copy} />}
+      </MotionCardContent>
+    </MotionCard>
   );
 }
 export function TaskStatus({ w, copy }: { w: Workspace; copy: Copy }) {
@@ -136,15 +154,16 @@ export function TaskStatus({ w, copy }: { w: Workspace; copy: Copy }) {
           </div>
         )}
       </div>
-      {w.task.mode !== w.mode && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => w.changeMode(w.task!.mode)}
-        >
-          {copy.viewTask}
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        style={{ visibility: w.task.mode === w.mode ? "hidden" : "visible" }}
+        aria-hidden={w.task.mode === w.mode || undefined}
+        tabIndex={w.task.mode === w.mode ? -1 : 0}
+        onClick={() => w.changeMode(w.task!.mode)}
+      >
+        {copy.viewTask}
+      </Button>
       <Button variant="ghost" size="sm" onClick={w.stop}>
         <X />
         {copy.cancel}
@@ -178,7 +197,6 @@ export function ActionArea({ w, copy }: { w: Workspace; copy: Copy }) {
   return (
     <div className="action-area">
       {w.mode === "merge" && <TaskError w={w} copy={copy} />}
-      {currentTask && <TaskStatus w={w} copy={copy} />}
       {!!w.outputs.length ? (
         <motion.div
           key={w.outputs[0].url}
@@ -313,38 +331,33 @@ export function MergeSettings({ w, copy }: { w: Workspace; copy: Copy }) {
     </aside>
   );
 }
-export function SplitWorkspace({ w, copy }: { w: Workspace; copy: Copy }) {
+export function SplitDetails({ w, copy }: { w: Workspace; copy: Copy }) {
   const source = w.books[0]?.summary;
   return (
-    <div className="single-workspace split-workspace">
-      <SourcePicker w={w} copy={copy} />
-      {!!w.books.length && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{copy.sourcePreview}</CardTitle>
-            <CardDescription>{copy.splitNote}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {source &&
-              (source.tool_generated ? (
-                <ol className="source-volumes">
-                  {source.sources.map((name, index) => (
-                    <li key={index}>
-                      <span className="book-index">{index + 1}</span>
-                      <span>{name}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <Alert className="split-notice">
-                  <CircleAlert className="h-4 w-4" />
-                  <AlertDescription>{copy.notSplittable}</AlertDescription>
-                </Alert>
+    <Card>
+      <CardHeader>
+        <CardTitle>{copy.sourcePreview}</CardTitle>
+        <CardDescription>{copy.splitNote}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {source &&
+          (source.tool_generated ? (
+            <ol className="source-volumes">
+              {source.sources.map((name, index) => (
+                <li key={index}>
+                  <span className="book-index">{index + 1}</span>
+                  <span>{name}</span>
+                </li>
               ))}
-            <ActionArea w={w} copy={copy} />
-          </CardContent>
-        </Card>
-      )}
-    </div>
+            </ol>
+          ) : (
+            <Alert className="split-notice">
+              <CircleAlert className="h-4 w-4" />
+              <AlertDescription>{copy.notSplittable}</AlertDescription>
+            </Alert>
+          ))}
+        <ActionArea w={w} copy={copy} />
+      </CardContent>
+    </Card>
   );
 }

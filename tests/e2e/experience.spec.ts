@@ -50,7 +50,7 @@ test("keeps all three workspaces and reuses output Blobs without uploading again
   });
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles([upload(1), upload(2)]);
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByLabel("Output filename").fill("  saved.EPUB  ");
@@ -58,7 +58,7 @@ test("keeps all three workspaces and reuses output Blobs without uploading again
   await page.getByLabel("Collection title").fill("Saved collection");
   await page.getByRole("tab", { name: "Inspect", exact: true }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(3));
   await expect(
     page.getByRole("button", { name: "Inspect book" }),
@@ -127,7 +127,7 @@ test("mouse dragging updates preview and actual merge order, then supports remov
 }) => {
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles([upload(1), upload(2), upload(3)]);
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await mouseReorder(page, 0, 2);
@@ -162,7 +162,7 @@ test("mouse dragging updates preview and actual merge order, then supports remov
     page.getByText("Inputs changed. Process again to get an updated result."),
   ).toBeVisible();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(4));
   await expect(order(page)).toHaveText(["Volume 2", "Volume 1", "Volume 4"]);
   await page.getByRole("button", { name: "Auto sort" }).click();
@@ -174,7 +174,7 @@ test("keyboard dragging commits or cancels without losing focus or publishing st
 }) => {
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles([upload(1), upload(2)]);
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Reorder: volume-1.epub" }).focus();
@@ -225,7 +225,7 @@ test("large navigation is expandable, paginated, and inspected from the parsed d
     ),
   );
   await page.goto("./");
-  await page.getByLabel("Choose files", { exact: true }).setInputFiles({
+  await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles({
     name: "volume-1.epub",
     mimeType: "application/epub+zip",
     buffer: Buffer.from(
@@ -268,7 +268,7 @@ test.describe("touch sorting", () => {
   }) => {
     await page.goto("./");
     await page
-      .getByLabel("Choose files", { exact: true })
+      .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
       .setInputFiles([upload(1), upload(2)]);
     await expect(
       page.getByRole("button", { name: "Merge books" }),
@@ -333,7 +333,7 @@ for (const width of [1440, 768, 390]) {
       ),
     );
     await page.goto("./");
-    await page.getByLabel("Choose files", { exact: true }).setInputFiles(
+    await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles(
       Array.from({ length: 24 }, (_, i) => ({
         name: `volume-${i + 1}.epub`,
         mimeType: "application/epub+zip",
@@ -373,6 +373,8 @@ for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("./");
     const capture = async (state: string) => {
+      await expect(page.locator(".workspace-detail[inert], .queue[inert]")).toHaveCount(0);
+      await expect.poll(() => page.locator(".workspace-stage").evaluate(node => getComputedStyle(node).transform)).toBe("none");
       await expect
         .poll(() =>
           page
@@ -383,7 +385,7 @@ for (const width of [1440, 768, 390]) {
       await expect
         .poll(() =>
           page
-            .locator(".workspace-content > div")
+            .getByRole("tabpanel").locator(":scope > div")
             .evaluate((node) => getComputedStyle(node).transform),
         )
         .toBe("none");
@@ -409,7 +411,7 @@ for (const width of [1440, 768, 390]) {
       });
     };
     await capture("empty");
-    await page.getByLabel("Choose files", { exact: true }).setInputFiles([
+    await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles([
       upload(2),
       {
         ...upload(1),
@@ -441,7 +443,7 @@ for (const width of [1440, 768, 390]) {
     await capture("inspect");
     await page.getByRole("tab", { name: "Merge", exact: true }).click();
     await page.getByRole("button", { name: "Clear all" }).click();
-    await page.getByLabel("Choose files", { exact: true }).setInputFiles({
+    await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles({
       name: "broken.epub",
       mimeType: "application/epub+zip",
       buffer: Buffer.from("not a zip"),

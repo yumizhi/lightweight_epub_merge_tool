@@ -8,7 +8,7 @@ import {
   LoaderCircle,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import {
   DragDropProvider,
   type DragStartEvent,
@@ -184,9 +184,10 @@ export function FileQueue({
   onClear,
 }: Props) {
   const [dragging, setDragging] = useState(false);
+  const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
-    <section className="queue" aria-label={copy.queue}>
+    <section className="queue" aria-label={copy.queue} inert={!present} aria-hidden={!present || undefined}>
       <div className="section-heading">
         <h2>
           {merge ? copy.queue : copy.source}
