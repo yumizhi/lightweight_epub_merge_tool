@@ -163,6 +163,10 @@ test("keeps language and theme preferences and fits a phone", async ({
     )
     .toBe(true);
   if (process.env.UPDATE_SCREENSHOTS) {
+    await expect(page.locator(".source-intro")).toHaveCount(0);
+    await expect.poll(() => page.locator(".workspace-stage, .workspace-grid, .file-panel, .dropzone, .workspace-detail").evaluateAll(nodes => nodes.every(node => getComputedStyle(node).transform === "none"))).toBe(true);
+    await expect.poll(() => page.locator(".workspace-detail").evaluateAll(nodes => nodes.every(node => getComputedStyle(node).opacity === "1" && getComputedStyle(node).clipPath.match(/[\d.]+/g)?.every(value => Number(value) === 0)))).toBe(true);
+    await page.mouse.move(0, 0);
     await page.screenshot({ path: "docs/mobile-dark.png", fullPage: true });
   }
 });
