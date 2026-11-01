@@ -29,24 +29,26 @@ export function PwaStatus({ copy, locked }: { copy: Copy; locked: boolean }) {
   }, []);
   if (!offlineReady && !install && !needRefresh) return null;
   return (
-    <div className="pwa-status">
-      {offlineReady && <span className="offline-status">{copy.offline}</span>}
+    <>
+      {offlineReady && <span className="sr-only" role="status">{copy.offline}</span>}
       {install && (
         <Button
           variant="ghost"
           size="sm"
+          className="install-app"
+          aria-label={copy.install}
           onClick={async () => {
             await install.prompt();
             await install.userChoice;
             setInstall(null);
           }}
         >
-          <Download />
-          {copy.install}
+          <Download aria-hidden />
+          <span className="install-label">{copy.install}</span>
         </Button>
       )}
       {needRefresh && (
-        <div role="status">
+        <div role="status" className="pwa-update">
           <span>{copy.update}</span>
           <Button
             variant="outline"
@@ -58,6 +60,6 @@ export function PwaStatus({ copy, locked }: { copy: Copy; locked: boolean }) {
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }

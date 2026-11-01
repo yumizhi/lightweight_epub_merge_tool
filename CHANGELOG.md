@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 — UI polish (unreleased)
+
+- Morph the same upload card and dropzone across Merge, Split and Inspect, with a sliding tab indicator, coordinated layout springs, inert exiting details, Radix keyboard navigation and immediate reduced-motion switching.
+- Start Merge with a centered upload panel, then expand the same picker into a file queue beside settings and the contents preview.
+- Keep short-page footers at the viewport bottom and long pages in normal document flow. Consolidate privacy copy, add Help and license links, and move supported PWA installation to the header.
+- Keep task feedback above the stage across tab switches, use singular file selection labels for Split and Inspect, and refresh responsive screenshots and browser coverage.
+
 ## 1.2.0 — prepared for release
 
 - Keep each tool’s files, settings and results when switching tabs. Clearing a workspace releases its download URLs; books are still kept only in memory.

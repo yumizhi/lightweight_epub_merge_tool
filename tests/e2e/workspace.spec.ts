@@ -16,7 +16,7 @@ test("merge, reorder, download, split every volume and inspect", async ({
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles([upload(2), upload(1)]);
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Auto sort" }).click();
@@ -44,7 +44,7 @@ test("merge, reorder, download, split every volume and inspect", async ({
     await page.screenshot({ path: "docs/workspace.png", fullPage: true });
   }
   await page.getByRole("tab", { name: "Split", exact: true }).click();
-  await page.getByLabel("Choose files", { exact: true }).setInputFiles({
+  await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles({
     name: "stories.epub",
     mimeType: "application/epub+zip",
     buffer: data,
@@ -79,7 +79,7 @@ test("merge, reorder, download, split every volume and inspect", async ({
   ]);
   await page.getByRole("tab", { name: "Inspect", exact: true }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(
     page.getByRole("button", { name: "Inspect book" }),
@@ -95,7 +95,7 @@ test("handles malformed input, cancellation, and a fresh task", async ({
   page,
 }) => {
   await page.goto("./");
-  await page.getByLabel("Choose files", { exact: true }).setInputFiles({
+  await page.getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/).setInputFiles({
     name: "broken.epub",
     mimeType: "application/epub+zip",
     buffer: Buffer.from("not a zip"),
@@ -108,7 +108,7 @@ test("handles malformed input, cancellation, and a fresh task", async ({
   ).toBeDisabled();
   await page.getByRole("button", { name: "Remove: broken.epub" }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(Array.from({ length: 80 }, (_, i) => upload(i + 1)));
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(
@@ -117,7 +117,7 @@ test("handles malformed input, cancellation, and a fresh task", async ({
   if (await page.getByRole("button", { name: "Clear all" }).count())
     await page.getByRole("button", { name: "Clear all" }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Merge books" }).click();
@@ -126,7 +126,7 @@ test("handles malformed input, cancellation, and a fresh task", async ({
   ).toBeVisible();
   await page.getByRole("tab", { name: "Split", exact: true }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(page.getByRole("alert")).toContainText("This EPUB has no merge record");
   await expect(page.getByRole("button", { name: "Split into books" })).toBeDisabled();
@@ -163,6 +163,10 @@ test("keeps language and theme preferences and fits a phone", async ({
     )
     .toBe(true);
   if (process.env.UPDATE_SCREENSHOTS) {
+    await expect(page.locator(".source-intro")).toHaveCount(0);
+    await expect.poll(() => page.locator(".workspace-stage, .workspace-grid, .file-panel, .dropzone, .workspace-detail").evaluateAll(nodes => nodes.every(node => getComputedStyle(node).transform === "none"))).toBe(true);
+    await expect.poll(() => page.locator(".workspace-detail").evaluateAll(nodes => nodes.every(node => getComputedStyle(node).opacity === "1" && getComputedStyle(node).clipPath.match(/[\d.]+/g)?.every(value => Number(value) === 0)))).toBe(true);
+    await page.mouse.move(0, 0);
     await page.screenshot({ path: "docs/mobile-dark.png", fullPage: true });
   }
 });
@@ -189,7 +193,7 @@ test("caches the Pages application and its Worker for offline processing", async
     page.getByRole("heading", { name: "EPUB Toolkit", exact: true }),
   ).toBeVisible();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Merge books" }).click();
@@ -201,7 +205,7 @@ test("caches the Pages application and its Worker for offline processing", async
 test("animates file reordering and select menus", async ({ page }) => {
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles([upload(1), upload(2)]);
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await expect(page.locator(".task-status")).toHaveCount(0);
@@ -272,7 +276,7 @@ test("reports real Worker stages, cancels processing and starts a fresh task", a
   );
   await page.goto("./");
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(
       Array.from({ length: 24 }, (_, i) => ({
         name: `volume-${i + 1}.epub`,
@@ -301,7 +305,7 @@ test("reports real Worker stages, cancels processing and starts a fresh task", a
   await page.getByRole("tab", { name: "Merge", exact: true }).click();
   await page.getByRole("button", { name: "Clear all" }).click();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Merge books" }).click();
@@ -351,7 +355,7 @@ test("releases download URLs and clears stale results on edits and failures", as
     page.getByRole("tab", { name: "Merge", exact: true }),
   ).toBeFocused();
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles(upload(1));
   await expect(page.getByRole("button", { name: "Merge books" })).toBeEnabled();
   await page.getByRole("button", { name: "Merge books" }).click();
@@ -384,7 +388,7 @@ test("releases download URLs and clears stale results on edits and failures", as
     ),
   );
   await page
-    .getByLabel("Choose files", { exact: true })
+    .getByRole("tabpanel").getByLabel(/^Choose (?:files|a file)$/)
     .setInputFiles({
       name: "volume-bad.epub",
       mimeType: "application/epub+zip",

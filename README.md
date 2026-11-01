@@ -10,6 +10,13 @@ Local processing · No file uploads · Offline availability · Python and Node C
 
 ![EPUB Toolkit: draggable book queue, contents preview, and download](docs/workspace.png)
 
+<details>
+<summary>Start with an empty workspace</summary>
+
+![Centered EPUB upload panel and footer](docs/empty-workspace.png)
+
+</details>
+
 [Watch the file-to-download workflow](docs/workflow.gif)
 
 ## What it does
@@ -24,6 +31,8 @@ Drag books into reading order with a mouse, touch, or the keyboard; automatic so
 
 After merging, download the EPUB or open it directly in Inspect or Split. There is no need to download and upload it again. Split shows the recoverable volumes before processing; Inspect puts metadata and navigation first, with detailed paths behind expandable sections.
 
+Merge starts with a centered upload panel and reveals settings and the contents preview after you add a book. The same upload card morphs between Merge, Split and Inspect inside a persistent workspace stage; short pages keep their footer at the bottom of the viewport. [Preview the workspace transition](docs/workspace-transition.gif).
+
 The workspace supports cancellation, English and Chinese, light and dark themes, and phone and tablet layouts. Short transitions and layout animations respect reduced-motion preferences. Edits invalidate old downloads; switching tabs does not.
 
 EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, CSS, images, SVG references, and plain fonts, including nested relative paths. Matching binary images and fonts are stored once in a merged book.
@@ -34,7 +43,7 @@ EPUB 2 NCX and EPUB 3 navigation are supported. Resource handling covers XHTML, 
 
 Book files and saved tab contents stay in browser memory and are processed in a Web Worker. Clear a tab or close the page to release its work. Reloading the page does not restore selected books. There is no upload endpoint, account, analytics, or server-side storage. Language and theme preferences are saved on the device.
 
-After the app reports that it is ready for offline use, it can be reopened without a connection. The app shell and processing code are cached; your books are not. Supported browsers offer **Install app**. Safari users can use the browser's Add to Dock or Add to Home Screen command. Updates appear as an explicit prompt.
+After the app reports that it is ready for offline use, it can be reopened without a connection. The app shell and processing code are cached; your books are not. Supported browsers offer **Install app** in the header when an installation prompt is available. Safari users can use the browser's Add to Dock or Add to Home Screen command. Updates appear as an explicit prompt.
 
 ## Run the web app
 
