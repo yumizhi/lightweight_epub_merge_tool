@@ -8,7 +8,14 @@ Local processing · No file uploads · Offline availability · Python and Node C
 
 合并 EPUB 分卷、恢复单册、查看书籍结构。支持中英文、明暗主题和离线使用。
 
+[![EPUB Toolkit — local EPUB processing, with the workspace and merged book preview](docs/product-showcase.png)](https://yumizhi.github.io/lightweight_epub_merge_tool/)
+
+<details>
+<summary>View the full workspace</summary>
+
 ![EPUB Toolkit: draggable book queue, contents preview, and download](docs/workspace.png)
+
+</details>
 
 <details>
 <summary>Start with an empty workspace</summary>
